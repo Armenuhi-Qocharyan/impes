@@ -24,7 +24,15 @@ object PlayersAPI extends PlayerJsonSupport {
           complete(StatusCodes.OK)
         }
       }
-    }
+    } ~
+      get {
+        path(Paths.players) {
+          complete(Players.getPlayers)
+        } ~
+          path(Paths.players / IntNumber) { id =>
+            complete(Players.getPlayer(id))
+          }
+      }
   }
 
 }

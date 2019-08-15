@@ -24,7 +24,15 @@ object DoneGamesAPI extends DoneGameJsonSupport {
           complete(StatusCodes.OK)
         }
       }
-    }
+    } ~
+      get {
+        path(Paths.doneGames) {
+          complete(DoneGames.getDoneGames)
+        } ~
+          path(Paths.doneGames / IntNumber) { id =>
+            complete(DoneGames.getDoneGame(id))
+          }
+      }
   }
 
 

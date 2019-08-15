@@ -1,8 +1,8 @@
 package im.pes.db
 
-import im.pes.constants.{CommonConstants, Tables}
-import im.pes.main.{connectionProperties, spark}
-import org.apache.spark.sql.SaveMode
+import im.pes.constants.Tables
+import im.pes.main.spark
+import im.pes.utils.DBUtils
 
 case class DoneGame(id: Int, firstTeamId: Int, secondTeamId: Int, championship: String, championshipState: String,
                     date: String)
@@ -21,13 +21,22 @@ object DoneGames {
 
   def addDoneGame(firstTeamId: Int, secondTeamId: Int, championship: String, championshipState: String,
                   date: String): Unit = {
-    val doneGameId =
-      spark.read.jdbc(CommonConstants.jdbcUrl, doneGamesConstants.tableName, connectionProperties).count() + 1
     val data = spark
-      .createDataFrame(Seq((doneGameId, firstTeamId, secondTeamId, championship, championshipState, date)))
+      .createDataFrame(Seq((DBUtils.getTable(doneGamesConstants.tableName).count() +
+        1, firstTeamId, secondTeamId, championship, championshipState, date)))
       .toDF(doneGamesConstants.id, doneGamesConstants.teamOne, doneGamesConstants.teamTwo,
         doneGamesConstants.championship, doneGamesConstants.championship_state, doneGamesConstants.date)
-    data.write.mode(SaveMode.Append).jdbc(CommonConstants.jdbcUrl, doneGamesConstants.tableName, connectionProperties)
+    DBUtils.addDataToTable(doneGamesConstants.tableName, data)
+  }
+
+  def getDoneGames: String = {
+    DBUtils.getTableData(doneGamesConstants.tableName)
+  }
+
+  def getDoneGame(id: Int): String = {
+    val doneGames = DBUtils.getTable(doneGamesConstants.tableName).filter(s"${doneGamesConstants.id} = $id").toJSON
+      .collect()
+    doneGames(0)
   }
 
 }

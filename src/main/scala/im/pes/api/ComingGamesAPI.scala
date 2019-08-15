@@ -24,7 +24,15 @@ object ComingGamesAPI extends ComingGameJsonSupport {
           complete(StatusCodes.OK)
         }
       }
-    }
+    } ~
+      get {
+        path(Paths.comingGames) {
+          complete(ComingGames.getComingGames)
+        } ~
+          path(Paths.comingGames / IntNumber) { id =>
+            complete(ComingGames.getComingGame(id))
+          }
+      }
   }
 
 

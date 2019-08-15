@@ -1,8 +1,8 @@
 package im.pes.db
 
-import im.pes.constants.{CommonConstants, Tables}
-import im.pes.main.{connectionProperties, spark}
-import org.apache.spark.sql.SaveMode
+import im.pes.constants.Tables
+import im.pes.main.spark
+import im.pes.utils.DBUtils
 
 
 case class User(id: Int, email: String, name: String, age: Int)
@@ -18,10 +18,18 @@ object Users {
   }
 
   def addUser(email: String, name: String, age: Int): Unit = {
-    val userId = spark.read.jdbc(CommonConstants.jdbcUrl, usersConstants.tableName, connectionProperties).count() + 1
-    val data = spark.createDataFrame(Seq((userId, email, age, name)))
+    val data = spark.createDataFrame(Seq((DBUtils.getTable(usersConstants.tableName).count() + 1, email, age, name)))
       .toDF(usersConstants.id, usersConstants.email, usersConstants.age, usersConstants.name)
-    data.write.mode(SaveMode.Append).jdbc(CommonConstants.jdbcUrl, usersConstants.tableName, connectionProperties)
+    DBUtils.addDataToTable(usersConstants.tableName, data)
+  }
+
+  def getUsers: String = {
+    DBUtils.getTableData(usersConstants.tableName)
+  }
+
+  def getUser(id: Int): String = {
+    val users = DBUtils.getTable(usersConstants.tableName).filter(s"${usersConstants.id} = $id").toJSON.collect()
+    users(0)
   }
 
 }

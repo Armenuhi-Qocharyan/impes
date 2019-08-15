@@ -24,7 +24,15 @@ object UsersAPI extends UserJsonSupport {
           complete(StatusCodes.OK)
         }
       }
-    }
+    } ~
+      get {
+        path(Paths.users) {
+          complete(Users.getUsers)
+        } ~
+          path(Paths.users / IntNumber) { id =>
+            complete(Users.getUser(id))
+          }
+      }
   }
 
 }

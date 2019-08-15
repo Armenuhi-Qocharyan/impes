@@ -24,7 +24,15 @@ object TeamsAPI extends TeamJsonSupport {
           complete(StatusCodes.OK)
         }
       }
-    }
+    } ~
+      get {
+        path(Paths.teams) {
+          complete(Teams.getTeams)
+        } ~
+          path(Paths.teams / IntNumber) { id =>
+            complete(Teams.getTeam(id))
+          }
+      }
   }
 
 }
