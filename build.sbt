@@ -1,4 +1,4 @@
-name := "newpes"
+name := "impes"
 
 version := "0.1"
 

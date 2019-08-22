@@ -2,7 +2,7 @@ package im.pes.db
 
 import im.pes.constants.{CommonConstants, Tables}
 import im.pes.main.spark
-import im.pes.utils.DBUtils
+import im.pes.utils.{BaseTable, DBUtils}
 
 case class Player(id: Int, name: String, teamId: Int, scoredGoals: Int, assists: Int, position: String, cost: Int,
                   age: Int, height: Int, weight: Int, skills: Int, gameIntelligence: Int, teamPlayer: Int,
@@ -10,6 +10,9 @@ case class Player(id: Int, name: String, teamId: Int, scoredGoals: Int, assists:
 
 case class PartialPlayer(name: String, teamId: Int, position: String, age: Int, height: Int, weight: Int,
                          gameIntelligence: Int, teamPlayer: Int, physique: Int)
+
+case class UpdatePlayer(name: Option[String], teamId: Option[Int], position: Option[String], age: Option[Int], height: Option[Int], weight: Option[Int],
+                            gameIntelligence: Option[Int], teamPlayer: Option[Int], physique: Option[Int]) extends BaseTable
 
 object Players {
 
@@ -52,13 +55,21 @@ object Players {
     }
   }
 
-  def getPlayers: String = {
-    DBUtils.getTableData(playersConstants.tableName)
+  def getPlayers(params: Map[String,String]): String = {
+    DBUtils.getTableData(playersConstants.tableName, params)
   }
 
   def getPlayer(id: Int): String = {
-    val players = DBUtils.getTable(playersConstants.tableName).filter(s"${playersConstants.id} = $id").toJSON.collect()
-    players(0)
+    DBUtils.getTableDataByPrimaryKey(playersConstants.tableName, id)
+  }
+
+
+  def deletePlayer(id: Int): Unit = {
+    DBUtils.deleteDataFromTable(playersConstants.tableName, id)
+  }
+
+  def updatePlayer(id: Int, updatePlayer: UpdatePlayer): Unit = {
+    DBUtils.updateDataInTable(id, updatePlayer, playersConstants)
   }
 
 }

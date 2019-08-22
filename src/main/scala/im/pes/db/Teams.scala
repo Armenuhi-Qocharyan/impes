@@ -2,12 +2,14 @@ package im.pes.db
 
 import im.pes.constants.{CommonConstants, Tables}
 import im.pes.main.spark
-import im.pes.utils.DBUtils
+import im.pes.utils.{BaseTable, DBUtils}
 
 case class Team(id: Int, name: String, budget: Int, championship: String, championsLeague: Boolean, isUsed: Boolean,
                 standardStaff: Int, owner: Int)
 
 case class PartialTeam(name: String, championship: String, owner: Int)
+
+case class UpdateTeam(name: Option[String], championship: Option[String], owner: Option[Int]) extends BaseTable
 
 object Teams {
 
@@ -26,13 +28,20 @@ object Teams {
     DBUtils.addDataToTable(teamsConstants.tableName, data)
   }
 
-  def getTeams: String = {
-    DBUtils.getTableData(teamsConstants.tableName)
+  def getTeams(params: Map[String,String]): String = {
+    DBUtils.getTableData(teamsConstants.tableName, params)
   }
 
   def getTeam(id: Int): String = {
-    val teams = DBUtils.getTable(teamsConstants.tableName).filter(s"${teamsConstants.id} = $id").toJSON.collect()
-    teams(0)
+    DBUtils.getTableDataByPrimaryKey(teamsConstants.tableName, id)
+  }
+
+  def deleteTeam(id: Int): Unit = {
+    DBUtils.deleteDataFromTable(teamsConstants.tableName, id)
+  }
+
+  def updateTeam(id: Int, updateTeam: UpdateTeam): Unit = {
+    DBUtils.updateDataInTable(id, updateTeam, teamsConstants)
   }
 
 }

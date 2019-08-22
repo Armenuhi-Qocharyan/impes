@@ -2,12 +2,13 @@ package im.pes.db
 
 import im.pes.constants.Tables
 import im.pes.main.spark
-import im.pes.utils.DBUtils
-
+import im.pes.utils.{BaseTable, DBUtils}
 
 case class User(id: Int, email: String, name: String, age: Int)
 
 case class PartialUser(email: String, name: String, age: Int)
+
+case class UpdateUser(email: Option[String], name: Option[String], age: Option[Int]) extends BaseTable
 
 object Users {
 
@@ -23,13 +24,20 @@ object Users {
     DBUtils.addDataToTable(usersConstants.tableName, data)
   }
 
-  def getUsers: String = {
-    DBUtils.getTableData(usersConstants.tableName)
+  def getUsers(params: Map[String, String]): String = {
+    DBUtils.getTableData(usersConstants.tableName, params)
   }
 
   def getUser(id: Int): String = {
-    val users = DBUtils.getTable(usersConstants.tableName).filter(s"${usersConstants.id} = $id").toJSON.collect()
-    users(0)
+    DBUtils.getTableDataByPrimaryKey(usersConstants.tableName, id)
   }
+  def deleteUser(id: Int): Unit = {
+    DBUtils.deleteDataFromTable(usersConstants.tableName, id)
+  }
+
+  def updateUser(id: Int, updateUser: UpdateUser): Unit = {
+    DBUtils.updateDataInTable(id, updateUser, usersConstants)
+  }
+
 
 }

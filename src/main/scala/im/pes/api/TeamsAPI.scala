@@ -6,17 +6,18 @@ import akka.http.scaladsl.server.Directives.{as, complete, entity, path, post, _
 import akka.http.scaladsl.server.Route
 import im.pes.Health
 import im.pes.constants.Paths
-import im.pes.db.{PartialTeam, Teams}
+import im.pes.db.{PartialTeam, Teams, UpdateTeam}
 import spray.json.{DefaultJsonProtocol, RootJsonFormat}
 
 trait TeamJsonSupport extends SprayJsonSupport with DefaultJsonProtocol {
   implicit val healthFormat: RootJsonFormat[Health] = jsonFormat2(Health)
   implicit val partialTeamFormat: RootJsonFormat[PartialTeam] = jsonFormat3(PartialTeam)
+  implicit val updateTeamFormat: RootJsonFormat[UpdateTeam] = jsonFormat3(UpdateTeam)
 }
 
 object TeamsAPI extends TeamJsonSupport {
 
-  def getRoute: Route = {
+  def getRoute: Route =
     post {
       path(Paths.teams) {
         entity(as[PartialTeam]) { team =>
@@ -27,12 +28,26 @@ object TeamsAPI extends TeamJsonSupport {
     } ~
       get {
         path(Paths.teams) {
-          complete(Teams.getTeams)
+          parameterMap { params =>
+            complete(Teams.getTeams(params))
+          }
         } ~
           path(Paths.teams / IntNumber) { id =>
             complete(Teams.getTeam(id))
           }
+      } ~
+      delete {
+        path(Paths.teams / IntNumber) { id =>
+          Teams.deleteTeam(id)
+          complete(StatusCodes.OK)
+        }
+      } ~
+      put {
+        path(Paths.teams / IntNumber) { id =>
+          entity(as[UpdateTeam]) { team =>
+            Teams.updateTeam(id, team)
+            complete(StatusCodes.OK)
+          }
+        }
       }
-  }
-
 }

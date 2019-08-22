@@ -6,12 +6,13 @@ import akka.http.scaladsl.server.Directives.{as, complete, entity, path, post, _
 import akka.http.scaladsl.server.Route
 import im.pes.Health
 import im.pes.constants.Paths
-import im.pes.db.{DoneGames, PartialDoneGame}
+import im.pes.db.{DoneGames, PartialDoneGame, UpdateDoneGame}
 import spray.json.{DefaultJsonProtocol, RootJsonFormat}
 
 trait DoneGameJsonSupport extends SprayJsonSupport with DefaultJsonProtocol {
   implicit val healthFormat: RootJsonFormat[Health] = jsonFormat2(Health)
   implicit val partialDoneGameFormat: RootJsonFormat[PartialDoneGame] = jsonFormat5(PartialDoneGame)
+  implicit val updateDoneGameFormat: RootJsonFormat[UpdateDoneGame] = jsonFormat5(UpdateDoneGame)
 }
 
 object DoneGamesAPI extends DoneGameJsonSupport {
@@ -27,13 +28,27 @@ object DoneGamesAPI extends DoneGameJsonSupport {
     } ~
       get {
         path(Paths.doneGames) {
-          complete(DoneGames.getDoneGames)
+          parameterMap { params =>
+            complete(DoneGames.getDoneGames(params))
+          }
         } ~
           path(Paths.doneGames / IntNumber) { id =>
             complete(DoneGames.getDoneGame(id))
           }
+      } ~
+    delete {
+      path(Paths.doneGames / IntNumber) { id =>
+        DoneGames.deleteDoneGame(id)
+        complete(StatusCodes.OK)
+      }
+    } ~
+      put {
+        path(Paths.doneGames / IntNumber) { id =>
+          entity(as[UpdateDoneGame]) { doneGame =>
+            DoneGames.updateDoneGame(id, doneGame)
+            complete(StatusCodes.OK)
+          }
+        }
       }
   }
-
-
 }

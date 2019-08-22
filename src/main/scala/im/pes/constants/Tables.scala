@@ -2,16 +2,22 @@ package im.pes.constants
 
 object Tables {
 
-  case object Users {
-    val tableName = "users"
+  trait Table {
+    val tableName: String = null
+  }
+
+  val primaryKey: String = "id"
+
+  case object Users extends Table {
+    override val tableName = "users"
     val id = "id"
     val email = "email"
     val age = "age"
     val name = "name"
   }
 
-  case object Teams {
-    val tableName = "teams"
+  case object Teams extends Table {
+    override val tableName = "teams"
     val id = "id"
     val name = "name"
     val budget = "budget"
@@ -21,8 +27,8 @@ object Tables {
     val owner = "owner"
   }
 
-  case object Players {
-    val tableName = "players"
+  case object Players extends Table {
+    override val tableName = "players"
     val id = "id"
     val name = "name"
     val team = "team"
@@ -42,23 +48,23 @@ object Tables {
     val yellowCardsCount = "yellow_cards_count"
   }
 
-  case object DoneGames {
-    val tableName = "done_games"
+  case object DoneGames extends Table {
+    override val tableName = "done_games"
     val id = "id"
     val teamOne = "team_one"
     val teamTwo = "team_two"
     val championship = "championship"
-    val championship_state = "championship_state"
+    val championshipState = "championship_state"
     val date = "date"
   }
 
-  case object ComingGames {
-    val tableName = "comming_games"
+  case object ComingGames extends Table {
+    override val tableName = "comming_games"
     val id = "id"
-    val teamOne = "team_one"
-    val teamTwo = "team_two"
+    val firstTeamId = "team_one"
+    val secondTeamId = "team_two"
     val championship = "championship"
-    val championship_state = "championship_state"
+    val championshipState = "championship_state"
     val date = "date"
   }
 
