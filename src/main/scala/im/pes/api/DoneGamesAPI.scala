@@ -1,7 +1,6 @@
 package im.pes.api
 
 import akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport
-import akka.http.scaladsl.model.StatusCodes
 import akka.http.scaladsl.server.Directives.{as, complete, entity, path, post, _}
 import akka.http.scaladsl.server.Route
 import im.pes.Health
@@ -17,12 +16,11 @@ trait DoneGameJsonSupport extends SprayJsonSupport with DefaultJsonProtocol {
 
 object DoneGamesAPI extends DoneGameJsonSupport {
 
-  def getRoute: Route = {
+  def getRoute: Route =
     post {
       path(Paths.doneGames) {
         entity(as[PartialDoneGame]) { doneGame =>
-          DoneGames.addDoneGame(doneGame)
-          complete(StatusCodes.OK)
+          complete(DoneGames.addDoneGame(doneGame))
         }
       }
     } ~
@@ -35,20 +33,5 @@ object DoneGamesAPI extends DoneGameJsonSupport {
           path(Paths.doneGames / IntNumber) { id =>
             complete(DoneGames.getDoneGame(id))
           }
-      } ~
-    delete {
-      path(Paths.doneGames / IntNumber) { id =>
-        DoneGames.deleteDoneGame(id)
-        complete(StatusCodes.OK)
       }
-    } ~
-      put {
-        path(Paths.doneGames / IntNumber) { id =>
-          entity(as[UpdateDoneGame]) { doneGame =>
-            DoneGames.updateDoneGame(id, doneGame)
-            complete(StatusCodes.OK)
-          }
-        }
-      }
-  }
 }

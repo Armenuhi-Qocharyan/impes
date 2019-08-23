@@ -1,5 +1,7 @@
 package im.pes.db
 
+import akka.http.scaladsl.marshalling.ToResponseMarshallable
+import akka.http.scaladsl.model.StatusCodes
 import im.pes.constants.Tables
 import im.pes.main.spark
 import im.pes.utils.{BaseTable, DBUtils}
@@ -17,35 +19,33 @@ object DoneGames {
 
   private val doneGamesConstants = Tables.DoneGames
 
-  def addDoneGame(partialDoneGame: PartialDoneGame): Unit = {
+  def addDoneGame(partialDoneGame: PartialDoneGame): ToResponseMarshallable = {
     addDoneGame(partialDoneGame.firstTeamId, partialDoneGame.secondTeamId, partialDoneGame.championship,
       partialDoneGame.championshipState, partialDoneGame.date)
   }
 
-  def addDoneGame(firstTeamId: Int, secondTeamId: Int, championship: String, championshipState: String,
-                  date: String): Unit = {
+  private def addDoneGame(firstTeamId: Int, secondTeamId: Int, championship: String, championshipState: String,
+                  date: String): ToResponseMarshallable = {
     val data = spark
-      .createDataFrame(Seq((DBUtils.getTable(doneGamesConstants.tableName).count() +
+      .createDataFrame(Seq((DBUtils.getTable(doneGamesConstants).count() +
         1, firstTeamId, secondTeamId, championship, championshipState, date)))
       .toDF(doneGamesConstants.id, doneGamesConstants.teamOne, doneGamesConstants.teamTwo,
         doneGamesConstants.championship, doneGamesConstants.championshipState, doneGamesConstants.date)
     DBUtils.addDataToTable(doneGamesConstants.tableName, data)
+    StatusCodes.OK
   }
 
-  def getDoneGames(params: Map[String, String]): String = {
-    DBUtils.getTableData(doneGamesConstants.tableName, params)
+  def getDoneGames(params: Map[String, String]): ToResponseMarshallable = {
+    DBUtils.getTableData(doneGamesConstants, params)
   }
 
-  def getDoneGame(id: Int): String = {
-    DBUtils.getTableDataByPrimaryKey(doneGamesConstants.tableName, id)
-  }
-
-  def deleteDoneGame(id: Int): Unit = {
-    DBUtils.deleteDataFromTable(doneGamesConstants.tableName, id)
-  }
-
-  def updateDoneGame(id: Int, updateDoneGame: UpdateDoneGame): Unit = {
-    DBUtils.updateDataInTable(id, updateDoneGame, doneGamesConstants)
+  def getDoneGame(id: Int): ToResponseMarshallable = {
+    val doneGame = DBUtils.getTableDataByPrimaryKey(doneGamesConstants, id)
+    if (null == doneGame) {
+      StatusCodes.NotFound
+    } else {
+      doneGame
+    }
   }
 
 }

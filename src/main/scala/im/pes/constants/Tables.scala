@@ -31,7 +31,7 @@ object Tables {
     override val tableName = "players"
     val id = "id"
     val name = "name"
-    val team = "team"
+    val teamId = "team"
     val scoredGoals = "scored_goals"
     val championsLeague = "champions_league"
     val assists = "assists"

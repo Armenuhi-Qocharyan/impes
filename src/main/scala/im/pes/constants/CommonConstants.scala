@@ -25,4 +25,6 @@ object CommonConstants {
   val sqlDeleteFormat = "DELETE FROM %s WHERE id = %d"
   val sqlUpdateFormat = "UPDATE %s SET %s WHERE id = %d"
 
+  val admins: Seq[Int] = Seq(1)
+
 }

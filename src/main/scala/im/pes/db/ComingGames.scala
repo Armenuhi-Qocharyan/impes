@@ -1,5 +1,7 @@
 package im.pes.db
 
+import akka.http.scaladsl.marshalling.ToResponseMarshallable
+import akka.http.scaladsl.model.StatusCodes
 import im.pes.constants.Tables
 import im.pes.main.spark
 import im.pes.utils.{BaseTable, DBUtils}
@@ -17,35 +19,55 @@ object ComingGames {
 
   private val comingGamesConstants = Tables.ComingGames
 
-  def addComingGame(partialComingGame: PartialComingGame): Unit = {
+  def addComingGame(partialComingGame: PartialComingGame, userId: Int): ToResponseMarshallable = {
+    if (DBUtils.checkAdmin(userId)) {
     addComingGame(partialComingGame.firstTeamId, partialComingGame.secondTeamId, partialComingGame.championship,
       partialComingGame.championshipState, partialComingGame.date)
+    } else {
+      StatusCodes.Forbidden
+    }
   }
 
-  def addComingGame(firstTeamId: Int, secondTeamId: Int, championship: String, championshipState: String,
-                    date: String): Unit = {
+  private def addComingGame(firstTeamId: Int, secondTeamId: Int, championship: String, championshipState: String,
+                    date: String): ToResponseMarshallable = {
     val data = spark
-      .createDataFrame(Seq((DBUtils.getTable(comingGamesConstants.tableName).count() +
+      .createDataFrame(Seq((DBUtils.getTable(comingGamesConstants).count() +
         1, firstTeamId, secondTeamId, championship, championshipState, date)))
       .toDF(comingGamesConstants.id, comingGamesConstants.firstTeamId, comingGamesConstants.secondTeamId,
         comingGamesConstants.championship, comingGamesConstants.championshipState, comingGamesConstants.date)
     DBUtils.addDataToTable(comingGamesConstants.tableName, data)
+    StatusCodes.OK
   }
 
-  def getComingGames(params: Map[String, String]): String = {
-    DBUtils.getTableData(comingGamesConstants.tableName, params)
+  def getComingGames(params: Map[String, String]): ToResponseMarshallable = {
+    DBUtils.getTableData(comingGamesConstants, params)
   }
 
-  def getComingGame(id: Int): String = {
-    DBUtils.getTableDataByPrimaryKey(comingGamesConstants.tableName, id)
+  def getComingGame(id: Int): ToResponseMarshallable = {
+    val comingGame = DBUtils.getTableDataByPrimaryKey(comingGamesConstants, id)
+    if (null == comingGame) {
+      StatusCodes.NotFound
+    } else {
+      comingGame
+    }
   }
 
-  def deleteComingGame(id: Int): Unit = {
-    DBUtils.deleteDataFromTable(comingGamesConstants.tableName, id)
+  def deleteComingGame(id: Int, userId: Int): ToResponseMarshallable = {
+    if (DBUtils.checkAdmin(userId)) {
+      DBUtils.deleteDataFromTable(comingGamesConstants.tableName, id)
+      StatusCodes.OK
+    } else {
+      StatusCodes.Forbidden
+    }
   }
 
-  def updateComingGame(id: Int, updateComingGame: UpdateComingGame): Unit = {
-    DBUtils.updateDataInTable(id, updateComingGame, comingGamesConstants)
+  def updateComingGame(id: Int, updateComingGame: UpdateComingGame, userId: Int): ToResponseMarshallable = {
+    if (DBUtils.checkAdmin(userId)) {
+      DBUtils.updateDataInTable(id, updateComingGame, comingGamesConstants)
+      StatusCodes.OK
+    } else {
+      StatusCodes.Forbidden
+    }
   }
 
 }
