@@ -19,5 +19,7 @@ libraryDependencies ++= Seq(
 
   "com.typesafe.slick" %% "slick" % "3.2.0",
 
-  "org.xerial" % "sqlite-jdbc" % "3.16.1"
+  "org.xerial" % "sqlite-jdbc" % "3.16.1",
+  "org.mindrot"  % "jbcrypt"   % "0.4"
+
 )

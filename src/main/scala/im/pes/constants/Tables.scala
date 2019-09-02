@@ -15,6 +15,7 @@ object Tables {
     val password = "password"
     val age = "age"
     val name = "name"
+    val budget = "budget"
   }
 
   case object Sessions extends Table {
@@ -111,6 +112,20 @@ object Tables {
     val mileage = "mileage"
     val yellowCards = "yellowCards"
     val redCard = "redCard"
+  }
+
+  case object TeamsTransactions extends Table {
+    override val tableName = "teams_transactions"
+    val id = "id"
+    val teamId = "teamId"
+    val price = "price"
+  }
+
+  case object PlayersTransactions extends Table {
+    override val tableName = "players_transactions"
+    val id = "id"
+    val playerId = "playerId"
+    val price = "price"
   }
 
 }

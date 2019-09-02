@@ -11,5 +11,9 @@ object Paths {
   val logout = "logout"
   val teamsStatistics = "teamsStatistics"
   val playersStatistics = "playersStatistics"
+  val teamsTransactions = "teamsTransactions"
+  val buyTeam = "buyTeam"
+  val playersTransactions = "playersTransactions"
+  val buyPlayer = "buyPlayer"
 
 }

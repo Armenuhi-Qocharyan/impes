@@ -14,23 +14,23 @@ case class TeamStatistics(id: Int, teamId: Int, doneGameId: Int, goals: Int, pos
 
 object Statistics {
 
-  private val teamStatisticsConstants = Tables.TeamsStatistics
-  private val playerStatisticsConstants = Tables.PlayersStatistics
+  private val teamsStatisticsConstants = Tables.TeamsStatistics
+  private val playersStatisticsConstants = Tables.PlayersStatistics
 
   def getTeamsStatistics(params: Map[String, String]): String = {
-    DBUtils.getTableData(teamStatisticsConstants, params)
+    DBUtils.getTableData(teamsStatisticsConstants, params)
   }
 
   def getTeamStatistics(id: Int): String = {
-    DBUtils.getTableDataByPrimaryKey(teamStatisticsConstants, id)
+    DBUtils.getTableDataByPrimaryKey(teamsStatisticsConstants, id)
   }
 
   def getPlayersStatistics(params: Map[String, String]): String = {
-    DBUtils.getTableData(playerStatisticsConstants, params)
+    DBUtils.getTableData(playersStatisticsConstants, params)
   }
 
   def getPlayerStatistics(id: Int): String = {
-    DBUtils.getTableDataByPrimaryKey(playerStatisticsConstants, id)
+    DBUtils.getTableDataByPrimaryKey(playersStatisticsConstants, id)
   }
 
   def addTeamStatistics(teamData: TeamData, doneGameId: Int): Unit = {
@@ -43,11 +43,11 @@ object Statistics {
     val data = spark
       .createDataFrame(Seq((
         1, teamId, doneGameId, goals, possession, yellowCards, redCards, falls, shots, aerialsWon)))
-      .toDF(teamStatisticsConstants.id, teamStatisticsConstants.teamId, teamStatisticsConstants.doneGameId,
-        teamStatisticsConstants.goals, teamStatisticsConstants.possession, teamStatisticsConstants.yellowCards,
-        teamStatisticsConstants.redCards, teamStatisticsConstants.falls, teamStatisticsConstants.shots,
-        teamStatisticsConstants.aerialsWon)
-    DBUtils.addDataToTable(teamStatisticsConstants.tableName, data)
+      .toDF(teamsStatisticsConstants.id, teamsStatisticsConstants.teamId, teamsStatisticsConstants.doneGameId,
+        teamsStatisticsConstants.goals, teamsStatisticsConstants.possession, teamsStatisticsConstants.yellowCards,
+        teamsStatisticsConstants.redCards, teamsStatisticsConstants.falls, teamsStatisticsConstants.shots,
+        teamsStatisticsConstants.aerialsWon)
+    DBUtils.addDataToTable(teamsStatisticsConstants.tableName, data)
   }
 
   def addPlayerStatistics(playerData: PlayerData, teamId: Int, doneGameId: Int): Unit = {
@@ -65,14 +65,14 @@ object Statistics {
       .createDataFrame(Seq((
         1, playerId, teamId, doneGameId, goals, donePasses, smartPasses, passes, doneShots, shots, doneTackles, tackles,
         dribblingCount, hooks, ballLosses, aerialsWon, assists, falls, mileage, yellowCards, redCard)))
-      .toDF(playerStatisticsConstants.id, playerStatisticsConstants.playerId, playerStatisticsConstants.teamId,
-        playerStatisticsConstants.doneGameId, playerStatisticsConstants.goals, playerStatisticsConstants.donePasses,
-        playerStatisticsConstants.smartPasses, playerStatisticsConstants.passes, playerStatisticsConstants.doneShots,
-        playerStatisticsConstants.shots, playerStatisticsConstants.doneTackles, playerStatisticsConstants.tackles,
-        playerStatisticsConstants.dribblingCount, playerStatisticsConstants.hooks, playerStatisticsConstants.ballLosses,
-        playerStatisticsConstants.aerialsWon, playerStatisticsConstants.assists, playerStatisticsConstants.falls,
-        playerStatisticsConstants.mileage, playerStatisticsConstants.yellowCards, playerStatisticsConstants.redCard)
-    DBUtils.addDataToTable(playerStatisticsConstants.tableName, data)
+      .toDF(playersStatisticsConstants.id, playersStatisticsConstants.playerId, playersStatisticsConstants.teamId,
+        playersStatisticsConstants.doneGameId, playersStatisticsConstants.goals, playersStatisticsConstants.donePasses,
+        playersStatisticsConstants.smartPasses, playersStatisticsConstants.passes, playersStatisticsConstants.doneShots,
+        playersStatisticsConstants.shots, playersStatisticsConstants.doneTackles, playersStatisticsConstants.tackles,
+        playersStatisticsConstants.dribblingCount, playersStatisticsConstants.hooks, playersStatisticsConstants.ballLosses,
+        playersStatisticsConstants.aerialsWon, playersStatisticsConstants.assists, playersStatisticsConstants.falls,
+        playersStatisticsConstants.mileage, playersStatisticsConstants.yellowCards, playersStatisticsConstants.redCard)
+    DBUtils.addDataToTable(playersStatisticsConstants.tableName, data)
   }
 
 }

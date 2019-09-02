@@ -14,7 +14,7 @@ import spray.json.{DefaultJsonProtocol, RootJsonFormat}
 trait UserJsonSupport extends SprayJsonSupport with DefaultJsonProtocol {
   implicit val healthFormat: RootJsonFormat[Health] = jsonFormat2(Health)
   implicit val partialUserFormat: RootJsonFormat[PartialUser] = jsonFormat4(PartialUser)
-  implicit val updateUserFormat: RootJsonFormat[UpdateUser] = jsonFormat4(UpdateUser)
+  implicit val updateUserFormat: RootJsonFormat[UpdateUser] = jsonFormat5(UpdateUser)
 }
 
 object UsersAPI extends UserJsonSupport {

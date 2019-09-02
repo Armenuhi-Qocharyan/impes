@@ -17,7 +17,7 @@ import spray.json._
 trait LoginJsonSupport extends SprayJsonSupport with DefaultJsonProtocol {
   implicit val healthFormat: RootJsonFormat[Health] = jsonFormat2(Health)
   implicit val loginFormat: RootJsonFormat[Login] = jsonFormat2(Login)
-  implicit val userFormat: RootJsonFormat[User] = jsonFormat5(User)
+  implicit val userFormat: RootJsonFormat[User] = jsonFormat6(User)
 }
 
 object LoginAPI extends LoginJsonSupport {

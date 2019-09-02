@@ -17,7 +17,7 @@ object DBUtils {
     try {
       getTable(table).filter(s"${Tables.primaryKey} = $value").drop(dropColumns: _*).toJSON.collect()(0)
     } catch {
-      case x: ArrayIndexOutOfBoundsException => null
+      case _: ArrayIndexOutOfBoundsException => null
     }
   }
 
@@ -26,7 +26,16 @@ object DBUtils {
       getTable(Tables.Sessions).filter(s"${Tables.Sessions.token} = '$token'").select(Tables.Sessions.userId).collect()(0)
         .getInt(0)
     } catch {
-      case x: ArrayIndexOutOfBoundsException => -1
+      case _: ArrayIndexOutOfBoundsException => -1
+    }
+  }
+
+  def getSessionId(userId: Int): Int = {
+    try {
+      getTable(Tables.Sessions).filter(s"${Tables.Sessions.userId} = '$userId'").select(Tables.Sessions.id).collect()(0)
+        .getInt(0)
+    } catch {
+      case _: ArrayIndexOutOfBoundsException => -1
     }
   }
 

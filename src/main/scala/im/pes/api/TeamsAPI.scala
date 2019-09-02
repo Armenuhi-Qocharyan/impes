@@ -7,14 +7,14 @@ import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.server.Route
 import im.pes.Health
 import im.pes.constants.{CommonConstants, Paths}
-import im.pes.db.{PartialTeam, Teams, UpdateTeam}
+import im.pes.db.{PartialTeam, Teams, UpdateTeam, UpdateUser, Users}
 import im.pes.utils.DBUtils
 import spray.json.{DefaultJsonProtocol, RootJsonFormat}
 
 trait TeamJsonSupport extends SprayJsonSupport with DefaultJsonProtocol {
   implicit val healthFormat: RootJsonFormat[Health] = jsonFormat2(Health)
-  implicit val partialTeamFormat: RootJsonFormat[PartialTeam] = jsonFormat3(PartialTeam)
-  implicit val updateTeamFormat: RootJsonFormat[UpdateTeam] = jsonFormat3(UpdateTeam)
+  implicit val partialTeamFormat: RootJsonFormat[PartialTeam] = jsonFormat4(PartialTeam)
+  implicit val updateTeamFormat: RootJsonFormat[UpdateTeam] = jsonFormat4(UpdateTeam)
 }
 
 object TeamsAPI extends TeamJsonSupport {
@@ -69,7 +69,12 @@ object TeamsAPI extends TeamJsonSupport {
     val userId = DBUtils.getIdByToken(token)
     if (userId.equals(partialTeam.owner)) {
       //TODO check fields values
+      val user = Users.getUserData(userId)
+      if (null == user || partialTeam.budget > user.budget) {
+        return StatusCodes.BadRequest
+      }
       Teams.addTeam(partialTeam, userId)
+      Users.updateUser(userId, UpdateUser(None, None, None, None, Option(user.budget - partialTeam.budget)))
       StatusCodes.OK
     } else {
       StatusCodes.Forbidden
@@ -86,6 +91,9 @@ object TeamsAPI extends TeamJsonSupport {
     if (Teams.checkTeam(id, userId)) {
       //TODO check what user may update
       //TODO check fields values
+      if (updateTeam.owner.isDefined && updateTeam.owner.get != userId) {
+        StatusCodes.BadRequest
+      }
       Teams.updateTeam(id, updateTeam)
       StatusCodes.NoContent
     } else {
@@ -94,10 +102,12 @@ object TeamsAPI extends TeamJsonSupport {
   }
 
   def deleteTeam(id: Int, token: String): ToResponseMarshallable = {
+    //TODO check championship state
     val userId = DBUtils.getIdByToken(token)
     if (DBUtils.isAdmin(userId) || Teams.checkTeam(id, userId)) {
       Teams.deleteTeam(id)
-      //TODO What happens with players? Or check that team doesn't have players
+      //TODO create transaction for default players and delete others
+      //TODO change user budget
       StatusCodes.NoContent
     } else {
       StatusCodes.Forbidden

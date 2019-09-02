@@ -7,7 +7,7 @@ import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.server.Route
 import im.pes.Health
 import im.pes.constants.{CommonConstants, Paths}
-import im.pes.db.{PartialPlayer, Players, Teams, UpdatePlayer}
+import im.pes.db.{PartialPlayer, Players, Teams, UpdatePlayer, UpdateTeam}
 import im.pes.utils.DBUtils
 import spray.json.{DefaultJsonProtocol, RootJsonFormat}
 
@@ -68,14 +68,16 @@ object PlayersAPI extends PlayerJsonSupport {
 
   def addPlayer(partialPlayer: PartialPlayer, token: String): ToResponseMarshallable = {
     val userId = DBUtils.getIdByToken(token)
-    if (DBUtils.isAdmin(userId)) {
-      //TODO check fields values
-      Players.addPlayer(partialPlayer)
-      return StatusCodes.OK
-    }
     if (Teams.checkTeam(partialPlayer.teamId, userId)) {
       //TODO check fields values
-      Players.addPlayer(partialPlayer)
+      val team = Teams.getTeamData(partialPlayer.teamId)
+      val skills = Players.calculateSkills(partialPlayer.gameIntelligence, partialPlayer.teamPlayer, partialPlayer.physique)
+      val cost = Players.calculateCost(skills, partialPlayer.age)
+      if (null == team || cost > team.budget) {
+        return StatusCodes.BadRequest
+      }
+      Players.addPlayer(partialPlayer, skills, cost)
+      Teams.updateTeam(team.id, UpdateTeam(None, Option(team.budget - cost), None, None))
       StatusCodes.OK
     } else {
       StatusCodes.Forbidden
@@ -95,6 +97,9 @@ object PlayersAPI extends PlayerJsonSupport {
       }
       //TODO check fields values
       //TODO check what user may update
+      if (updatePlayer.teamId.isDefined && updatePlayer.teamId.get != Players.getPlayerData(id).teamId) {
+        StatusCodes.BadRequest
+      }
       Players.updatePlayer(id, updatePlayer)
       StatusCodes.NoContent
     } else {
@@ -103,8 +108,19 @@ object PlayersAPI extends PlayerJsonSupport {
   }
 
   def deletePlayer(id: Int, token: String): ToResponseMarshallable = {
+    //TODO check championship state
     val userId = DBUtils.getIdByToken(token)
-    if (DBUtils.isAdmin(userId) || Players.checkPlayer(id, userId)) {
+    if (DBUtils.isAdmin(userId)) {
+      Players.deletePlayer(id)
+      return StatusCodes.OK
+    }
+    if (Players.checkPlayer(id, userId)) {
+      if (CommonConstants.defaultPlayers.contains(id)) {
+        return StatusCodes.BadRequest
+      }
+      val player = Players.getPlayerData(id)
+      val team = Teams.getTeamData(player.teamId)
+      Teams.updateTeam(team.id, UpdateTeam(None, Option(team.budget + CommonConstants.playerMinCost), None, None))
       Players.deletePlayer(id)
       StatusCodes.OK
     } else {
