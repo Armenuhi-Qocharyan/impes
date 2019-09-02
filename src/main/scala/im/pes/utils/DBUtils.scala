@@ -3,10 +3,44 @@ package im.pes.utils
 import im.pes.constants.{CommonConstants, Tables}
 import im.pes.main.{connectionProperties, spark, stmt}
 import org.apache.spark.sql.{DataFrame, SaveMode}
+import org.mindrot.jbcrypt.BCrypt
 
 trait BaseTable
 
 object DBUtils {
+
+  def getTableDataByPrimaryKey(table: Tables.Table, value: Int): String = {
+    getTableDataByPrimaryKey(table, value, Seq())
+  }
+
+  def getTableDataByPrimaryKey(table: Tables.Table, value: Int, dropColumns: Seq[String]): String = {
+    try {
+      getTable(table).filter(s"${Tables.primaryKey} = $value").drop(dropColumns: _*).toJSON.collect()(0)
+    } catch {
+      case x: ArrayIndexOutOfBoundsException => null
+    }
+  }
+
+  def getIdByToken(token: String): Int = {
+    try {
+      getTable(Tables.Sessions).filter(s"${Tables.Sessions.token} = '$token'").select(Tables.Sessions.userId).collect()(0)
+        .getInt(0)
+    } catch {
+      case x: ArrayIndexOutOfBoundsException => -1
+    }
+  }
+
+  def getTableData(table: Tables.Table, params: Map[String, String]): String = {
+    getTableData(table, params, Seq())
+  }
+
+  def getTableData(table: Tables.Table, params: Map[String, String], dropColumns: Seq[String]): String = {
+    var df = getTable(table)
+    for (param <- params) {
+      df = df.filter(s"${param._1} = ${param._2}")
+    }
+    dataToJsonFormat(df.drop(dropColumns: _*))
+  }
 
   private def dataToJsonFormat(dataFrame: DataFrame): String = {
     val builder = StringBuilder.newBuilder
@@ -20,24 +54,17 @@ object DBUtils {
     builder.append(']').toString()
   }
 
-  def getTableDataByPrimaryKey(table: Tables.Table, value: Int): String = {
-    try {
-      getTable(table).filter(s"${Tables.primaryKey} = $value").toJSON.collect()(0)
-    } catch {
-      case x: ArrayIndexOutOfBoundsException => null
-    }
+  def getTable(table: Tables.Table): DataFrame = {
+    getTable(table, Seq())
   }
 
-  def getTableData(table: Tables.Table, params: Map[String,String]): String = {
-    var df = getTable(table)
-    for (param <- params) {
-        df = df.filter(s"${param._1} = ${param._2}")
-    }
-    dataToJsonFormat(renameColumns(df, table))
+  def getTable(table: Tables.Table, dropColumns: Seq[String]): DataFrame = {
+    renameColumns(spark.read.jdbc(CommonConstants.jdbcUrl, table.tableName, connectionProperties).drop(dropColumns: _*),
+      table)
   }
 
   private def renameColumns(dataFrame: DataFrame, table: Tables.Table): DataFrame = {
-    var df = dataFrame;
+    var df = dataFrame
     for (field <- table.getClass.getDeclaredFields) {
       field.setAccessible(true)
       df = df.withColumnRenamed(field.get(table).toString, field.getName)
@@ -65,7 +92,11 @@ object DBUtils {
         builder.append(key).append(" = ")
         val value = valueOption.asInstanceOf[Option[Any]].get
         if (value.isInstanceOf[String]) {
-          builder.append(''').append(value).append(''')
+          if (key.equals(Tables.Users.password)) {
+            builder.append(''').append(BCrypt.hashpw(value.toString, BCrypt.gensalt)).append(''')
+          } else {
+            builder.append(''').append(value).append(''')
+          }
         } else {
           builder.append(value)
         }
@@ -78,11 +109,7 @@ object DBUtils {
     }
   }
 
-  def getTable(table: Tables.Table): DataFrame = {
-    renameColumns(spark.read.jdbc(CommonConstants.jdbcUrl, table.tableName, connectionProperties), table)
-  }
-
-  def checkAdmin(userId: Int): Boolean = {
+  def isAdmin(userId: Int): Boolean = {
     CommonConstants.admins.contains(userId)
   }
 

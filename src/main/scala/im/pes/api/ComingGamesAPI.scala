@@ -1,12 +1,14 @@
 package im.pes.api
 
 import akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport
-import akka.http.scaladsl.server.Directives.{as, complete, entity, path, post, _}
+import akka.http.scaladsl.marshalling.ToResponseMarshallable
+import akka.http.scaladsl.model.StatusCodes
+import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.server.Route
 import im.pes.Health
-import im.pes.constants.Paths
+import im.pes.constants.{CommonConstants, Paths}
 import im.pes.db.{ComingGames, PartialComingGame, UpdateComingGame}
-import im.pes.utils.APIUtils
+import im.pes.utils.DBUtils
 import spray.json.{DefaultJsonProtocol, RootJsonFormat}
 
 trait ComingGameJsonSupport extends SprayJsonSupport with DefaultJsonProtocol {
@@ -18,36 +20,80 @@ trait ComingGameJsonSupport extends SprayJsonSupport with DefaultJsonProtocol {
 object ComingGamesAPI extends ComingGameJsonSupport {
 
   def getRoute: Route =
-    get {
-      path(Paths.comingGames) {
+    path(Paths.comingGames) {
+      get {
         parameterMap { params =>
-          complete(ComingGames.getComingGames(params))
+          complete(getComingGames(params))
         }
       } ~
-        path(Paths.comingGames / IntNumber) { id =>
-          complete(ComingGames.getComingGame(id))
-        }
-    } ~
-      headerValueByName("Token") { token =>
-        val userId = APIUtils.validateToken(token)
         post {
           path(Paths.comingGames) {
             entity(as[PartialComingGame]) { comingGame =>
-              complete(ComingGames.addComingGame(comingGame, userId))
-            }
-          }
-        } ~
-          delete {
-            path(Paths.comingGames / IntNumber) { id =>
-              complete(ComingGames.deleteComingGame(id, userId))
-            }
-          } ~
-          put {
-            path(Paths.comingGames / IntNumber) { id =>
-              entity(as[UpdateComingGame]) { comingGame =>
-                complete(ComingGames.updateComingGame(id, comingGame, userId))
+              headerValueByName(CommonConstants.token) { token =>
+                complete(addComingGame(comingGame, token))
               }
             }
           }
+        }
+    } ~
+      path(Paths.comingGames / IntNumber) { id =>
+        get {
+          complete(getComingGame(id))
+        } ~
+          put {
+            headerValueByName(CommonConstants.token) { token =>
+              entity(as[UpdateComingGame]) { comingGame =>
+                complete(updateComingGame(id, comingGame, token))
+              }
+            }
+          } ~
+          delete {
+            headerValueByName(CommonConstants.token) { token =>
+              complete(deleteComingGame(id, token))
+            }
+          }
       }
+
+  def getComingGames(params: Map[String, String]): ToResponseMarshallable = {
+    ComingGames.getComingGames(params)
+  }
+
+  def getComingGame(id: Int): ToResponseMarshallable = {
+    val comingGame = ComingGames.getComingGame(id)
+    if (null == comingGame) {
+      StatusCodes.NotFound
+    } else {
+      comingGame
+    }
+  }
+
+  def addComingGame(partialComingGame: PartialComingGame, token: String): ToResponseMarshallable = {
+    if (DBUtils.isAdmin(DBUtils.getIdByToken(token))) {
+      //TODO check fields values
+      ComingGames.addComingGame(partialComingGame)
+      StatusCodes.OK
+    } else {
+      StatusCodes.Forbidden
+    }
+  }
+
+  def updateComingGame(id: Int, updateComingGame: UpdateComingGame, token: String): ToResponseMarshallable = {
+    if (DBUtils.isAdmin(DBUtils.getIdByToken(token))) {
+      //TODO check fields values
+      ComingGames.updateComingGame(id, updateComingGame)
+      StatusCodes.OK
+    } else {
+      StatusCodes.Forbidden
+    }
+  }
+
+  def deleteComingGame(id: Int, token: String): ToResponseMarshallable = {
+    if (DBUtils.isAdmin(DBUtils.getIdByToken(token))) {
+      ComingGames.deleteComingGame(id)
+      StatusCodes.OK
+    } else {
+      StatusCodes.Forbidden
+    }
+  }
+
 }

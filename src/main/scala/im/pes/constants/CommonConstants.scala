@@ -22,9 +22,12 @@ object CommonConstants {
   val routeHost = "127.0.0.1"
   val routePort = 8080
 
-  val sqlDeleteFormat = "DELETE FROM %s WHERE id = %d"
-  val sqlUpdateFormat = "UPDATE %s SET %s WHERE id = %d"
+  val sqlDeleteFormat = s"DELETE FROM %s WHERE ${Tables.primaryKey} = %d"
+  val sqlDeleteTokenFormat = s"DELETE FROM %s WHERE ${Tables.Sessions.token} = %s"
+  val sqlUpdateFormat = s"UPDATE %s SET %s WHERE ${Tables.primaryKey} = %d"
 
   val admins: Seq[Int] = Seq(1)
+
+  val token = "Token"
 
 }

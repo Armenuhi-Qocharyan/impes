@@ -12,8 +12,16 @@ object Tables {
     override val tableName = "users"
     val id = "id"
     val email = "email"
+    val password = "password"
     val age = "age"
     val name = "name"
+  }
+
+  case object Sessions extends Table {
+    override val tableName = "sessions"
+    val id = "id"
+    val userId = "userId"
+    val token = "token"
   }
 
   case object Teams extends Table {
@@ -32,9 +40,7 @@ object Tables {
     val id = "id"
     val name = "name"
     val teamId = "team"
-    val scoredGoals = "scored_goals"
     val championsLeague = "champions_league"
-    val assists = "assists"
     val position = "position"
     val cost = "cost"
     val age = "age"
@@ -44,15 +50,15 @@ object Tables {
     val gameIntelligence = "game_intelligence"
     val teamPlayer = "team_player"
     val physique = "physique"
-    val redCardsCount = "red_cards_count"
-    val yellowCardsCount = "yellow_cards_count"
   }
 
   case object DoneGames extends Table {
     override val tableName = "done_games"
     val id = "id"
-    val teamOne = "team_one"
-    val teamTwo = "team_two"
+    val firstTeamId = "team_one"
+    val secondTeamId = "team_two"
+    val firstTeamGoals = "firstTeamGoals"
+    val secondTeamGoals = "secondTeamGoals"
     val championship = "championship"
     val championshipState = "championship_state"
     val date = "date"
@@ -66,6 +72,45 @@ object Tables {
     val championship = "championship"
     val championshipState = "championship_state"
     val date = "date"
+  }
+
+  case object TeamsStatistics extends Table {
+    override val tableName = "teams_statistics"
+    val id = "id"
+    val teamId = "teamId"
+    val doneGameId = "doneGameId"
+    val goals = "goals"
+    val possession = "possession"
+    val yellowCards = "yellowCards"
+    val redCards = "redCards"
+    val falls = "falls"
+    val shots = "shots"
+    val aerialsWon = "aerialsWon"
+  }
+
+  case object PlayersStatistics extends Table {
+    override val tableName = "players_statistics"
+    val id = "id"
+    val playerId = "playerId"
+    val teamId = "teamId"
+    val doneGameId = "doneGameId"
+    val goals = "goals"
+    val donePasses = "donePasses"
+    val smartPasses = "smartPasses"
+    val passes = "passes"
+    val doneShots = "doneShots"
+    val shots = "shots"
+    val doneTackles = "doneTackles"
+    val tackles = "tackles"
+    val dribblingCount = "dribblingCount"
+    val hooks = "hooks"
+    val ballLosses = "ballLosses"
+    val aerialsWon = "aerialsWon"
+    val assists = "assists"
+    val falls = "falls"
+    val mileage = "mileage"
+    val yellowCards = "yellowCards"
+    val redCard = "redCard"
   }
 
 }

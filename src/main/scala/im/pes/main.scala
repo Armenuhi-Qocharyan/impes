@@ -36,7 +36,7 @@ object main {
     val requestHandler = system.actorOf(RequestHandler.props(), "requesthandler")
 
     val route = UsersAPI.getRoute ~ TeamsAPI.getRoute ~ DoneGamesAPI.getRoute ~ ComingGamesAPI.getRoute ~
-      PlayersAPI.getRoute
+      PlayersAPI.getRoute ~ LoginAPI.getRoute ~ LogoutAPI.getRoute
     val bindingFuture = Http().bindAndHandle(route, CommonConstants.routeHost, CommonConstants.routePort)
     println(s"\nServer running on ${CommonConstants.routeHost}:${CommonConstants.routePort}\nhit RETURN to terminate")
     StdIn.readLine()
