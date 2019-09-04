@@ -22,7 +22,7 @@ object Sessions {
   }
 
   def deleteSession(token: String): Unit = {
-    stmt.executeUpdate(CommonConstants.sqlDeleteTokenFormat.format(sessionsConstants.tableName, token))
+    stmt.executeUpdate(CommonConstants.sqlDeleteTokenQuery(token))
   }
 
 }

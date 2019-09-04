@@ -7,7 +7,7 @@ import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.server.Route
 import im.pes.Health
 import im.pes.constants.{CommonConstants, Paths}
-import im.pes.db.{PartialTeam, Teams, UpdateTeam, UpdateUser, Users}
+import im.pes.db._
 import im.pes.utils.DBUtils
 import spray.json.{DefaultJsonProtocol, RootJsonFormat}
 
@@ -104,10 +104,26 @@ object TeamsAPI extends TeamJsonSupport {
   def deleteTeam(id: Int, token: String): ToResponseMarshallable = {
     //TODO check championship state
     val userId = DBUtils.getIdByToken(token)
-    if (DBUtils.isAdmin(userId) || Teams.checkTeam(id, userId)) {
+    if (DBUtils.isAdmin(userId)) {
       Teams.deleteTeam(id)
-      //TODO create transaction for default players and delete others
-      //TODO change user budget
+      for (player <- Players.getTeamPlayers(id)) {
+        Players.deletePlayer(player.getInt(0), player.getInt(1))
+      }
+    }
+    if (Teams.checkTeam(id, userId)) {
+      if (CommonConstants.defaultTeams.contains(id)) {
+        val team = Teams.getTeamData(id)
+        Teams.updateTeam(id, UpdateTeam(None, None, None, Option(CommonConstants.admins.head)))
+        Transactions.addTeamTransaction(PartialTeamTransaction(id, team.budget))
+      } else {
+        for (player <- Players.getTeamPlayers(id)) {
+          Players.deletePlayer(player.getInt(0), player.getInt(1))
+        }
+        Teams.deleteTeam(id)
+      }
+      val user = Users.getUserData(userId)
+      Users.updateUser(userId,
+        UpdateUser(None, None, None, None, Option(user.budget + 11 * CommonConstants.playerMinCost)))
       StatusCodes.NoContent
     } else {
       StatusCodes.Forbidden

@@ -5,7 +5,7 @@ import im.pes.Health
 import im.pes.constants.Tables
 import im.pes.main.spark
 import im.pes.utils.DBUtils
-import spray.json.{DefaultJsonProtocol, RootJsonFormat, _}
+import spray.json._
 
 case class TeamTransaction(id: Int, teamId: Int, price: Int)
 
@@ -34,8 +34,8 @@ object Transactions extends TransactionsJsonSupport {
     DBUtils.getTableData(playersTransactionsConstants, params)
   }
 
-  def addTeamTransaction(partialSellTeam: PartialTeamTransaction): Unit = {
-    addTeamTransaction(partialSellTeam.teamId, partialSellTeam.price)
+  def addTeamTransaction(partialTeamTransaction: PartialTeamTransaction): Unit = {
+    addTeamTransaction(partialTeamTransaction.teamId, partialTeamTransaction.price)
   }
 
   def addTeamTransaction(teamId: Int, price: Int): Unit = {
@@ -45,8 +45,8 @@ object Transactions extends TransactionsJsonSupport {
     DBUtils.addDataToTable(teamsTransactionsConstants.tableName, data)
   }
 
-  def addPlayerTransaction(partialSellPlayer: PartialPlayerTransaction): Unit = {
-    addPlayerTransaction(partialSellPlayer.playerId, partialSellPlayer.price)
+  def addPlayerTransaction(partialPlayerTransaction: PartialPlayerTransaction): Unit = {
+    addPlayerTransaction(partialPlayerTransaction.playerId, partialPlayerTransaction.price)
   }
 
   def addPlayerTransaction(playerId: Int, price: Int): Unit = {
@@ -81,5 +81,15 @@ object Transactions extends TransactionsJsonSupport {
       playerTransaction.parseJson.convertTo[PlayerTransaction]
     }
   }
+
+  def checkTeamTransaction(teamId: Int): Boolean = {
+    DBUtils.getTable(teamsTransactionsConstants).filter(s"${teamsTransactionsConstants.teamId} = $teamId").count() != 0
+  }
+
+  def checkPlayerTransaction(playerId: Int): Boolean = {
+    DBUtils.getTable(playersTransactionsConstants).filter(s"${playersTransactionsConstants.playerId} = $playerId")
+      .count() != 0
+  }
+
 
 }

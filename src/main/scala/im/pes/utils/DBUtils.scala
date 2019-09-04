@@ -32,7 +32,7 @@ object DBUtils {
 
   def getSessionId(userId: Int): Int = {
     try {
-      getTable(Tables.Sessions).filter(s"${Tables.Sessions.userId} = '$userId'").select(Tables.Sessions.id).collect()(0)
+      getTable(Tables.Sessions).filter(s"${Tables.Sessions.userId} = $userId").select(Tables.Sessions.id).collect()(0)
         .getInt(0)
     } catch {
       case _: ArrayIndexOutOfBoundsException => -1
@@ -86,7 +86,7 @@ object DBUtils {
   }
 
   def deleteDataFromTable(tableName: String, id: Int): Unit = {
-    stmt.executeUpdate(CommonConstants.sqlDeleteFormat.format(tableName, id))
+    stmt.executeUpdate(CommonConstants.sqlDeleteQuery(tableName, id))
   }
 
   def updateDataInTable(id: Int, data: BaseTable, table: Tables.Table): Unit = {
@@ -114,7 +114,7 @@ object DBUtils {
     }
     if (builder.length() > 0) {
       builder.setLength(builder.length() - 2)
-      stmt.executeUpdate(CommonConstants.sqlUpdateFormat.format(table.tableName, builder.toString(), id))
+      stmt.executeUpdate(CommonConstants.sqlUpdateQuery(table.tableName, builder.toString(), id))
     }
   }
 

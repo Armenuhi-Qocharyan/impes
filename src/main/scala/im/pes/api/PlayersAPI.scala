@@ -7,7 +7,7 @@ import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.server.Route
 import im.pes.Health
 import im.pes.constants.{CommonConstants, Paths}
-import im.pes.db.{PartialPlayer, Players, Teams, UpdatePlayer, UpdateTeam}
+import im.pes.db._
 import im.pes.utils.DBUtils
 import spray.json.{DefaultJsonProtocol, RootJsonFormat}
 
@@ -71,7 +71,8 @@ object PlayersAPI extends PlayerJsonSupport {
     if (Teams.checkTeam(partialPlayer.teamId, userId)) {
       //TODO check fields values
       val team = Teams.getTeamData(partialPlayer.teamId)
-      val skills = Players.calculateSkills(partialPlayer.gameIntelligence, partialPlayer.teamPlayer, partialPlayer.physique)
+      val skills = Players
+        .calculateSkills(partialPlayer.gameIntelligence, partialPlayer.teamPlayer, partialPlayer.physique)
       val cost = Players.calculateCost(skills, partialPlayer.age)
       if (null == team || cost > team.budget) {
         return StatusCodes.BadRequest
@@ -115,13 +116,10 @@ object PlayersAPI extends PlayerJsonSupport {
       return StatusCodes.OK
     }
     if (Players.checkPlayer(id, userId)) {
-      if (CommonConstants.defaultPlayers.contains(id)) {
-        return StatusCodes.BadRequest
-      }
       val player = Players.getPlayerData(id)
       val team = Teams.getTeamData(player.teamId)
       Teams.updateTeam(team.id, UpdateTeam(None, Option(team.budget + CommonConstants.playerMinCost), None, None))
-      Players.deletePlayer(id)
+      Players.deletePlayer(id, player.cost)
       StatusCodes.OK
     } else {
       StatusCodes.Forbidden

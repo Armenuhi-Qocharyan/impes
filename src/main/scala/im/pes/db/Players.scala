@@ -5,6 +5,7 @@ import im.pes.Health
 import im.pes.constants.{CommonConstants, Tables}
 import im.pes.main.spark
 import im.pes.utils.{BaseTable, DBUtils}
+import org.apache.spark.sql.Row
 import spray.json._
 
 case class Player(id: Int, name: String, teamId: Int, position: String, cost: Int, age: Int, height: Int, weight: Int,
@@ -159,6 +160,17 @@ object Players extends PlayerJsonSupport {
     DBUtils.deleteDataFromTable(playersConstants.tableName, id)
   }
 
+  def deletePlayer(id: Int, cost: Int): Unit = {
+    if (CommonConstants.defaultPlayers.contains(id)) {
+      Players.updatePlayer(id,
+        UpdatePlayer(None, Option(Teams.getUserTeam(CommonConstants.admins.head).id), None, None, None, None, None,
+          None, None))
+      Transactions.addPlayerTransaction(PartialPlayerTransaction(id, cost))
+    } else {
+      Players.deletePlayer(id)
+    }
+  }
+
   def checkPlayer(id: Int, userId: Int): Boolean = {
     val teamsConstants = Tables.Teams
     val player = DBUtils.getTableDataByPrimaryKey(playersConstants, id)
@@ -177,6 +189,11 @@ object Players extends PlayerJsonSupport {
     } else {
       player.parseJson.convertTo[Player]
     }
+  }
+
+  def getTeamPlayers(teamId: Int): Array[Row] = {
+    DBUtils.getTable(playersConstants).filter(s"${playersConstants.teamId} = $teamId")
+      .select(playersConstants.id, playersConstants.cost).collect()
   }
 
 }

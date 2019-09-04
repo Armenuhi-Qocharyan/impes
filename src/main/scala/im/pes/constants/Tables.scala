@@ -128,4 +128,74 @@ object Tables {
     val price = "price"
   }
 
+
+  case object TeamsTransactionsHistory extends Table {
+    override val tableName = "teams_transactions_history"
+    val id = "id"
+    val teamId = "teamId"
+    val sUserId = "sUserId"
+    val bUserId = "bUserId"
+    val price = "price"
+    val date = "date"
+  }
+
+  case object PlayersTransactionsHistory extends Table {
+    override val tableName = "players_transactions_history"
+    val id = "id"
+    val playerId = "playerId"
+    val sTeamId = "sTeamId"
+    val bTeamId = "bTeamId"
+    val price = "price"
+    val date = "date"
+  }
+
+  case object ActiveGames extends Table {
+    override val tableName = "active_games"
+    val id = "id"
+    val firstTeamId = "firstTeamId"
+    val secondTeamId = "secondTeamId"
+    val championship = "championship"
+    val championshipState = "championshipState"
+  }
+
+  case object ActiveGamesPlayersData extends Table {
+    override val tableName = "active_games_players_data"
+    val id = "id"
+    val gameId = "gameId"
+    val playerId = "playerId"
+    val summary = "summary"
+    val activities = "activities"
+  }
+
+  case object Activities {
+    val activityType = "activityType"
+    val time = "time"
+    val angle = "angle"
+    val x = "x"
+    val y = "y"
+    val firstAngle = "firstAngle"
+    val secondAngle = "secondAngle"
+    val power = "power"
+  }
+
+  case object Summary {
+    val goals = "goals"
+    val donePasses = "donePasses"
+    val smartPasses = "smartPasses"
+    val passes = "passes"
+    val doneShots = "doneShots"
+    val shots = "shots"
+    val doneTackles = "doneTackles"
+    val tackles = "tackles"
+    val dribblingCount = "dribblingCount"
+    val hooks = "hooks"
+    val ballLosses = "ballLosses"
+    val aerialsWon = "aerialsWon"
+    val assists = "assists"
+    val falls = "falls"
+    val mileage = "mileage"
+    val yellowCards = "yellowCards"
+    val redCard = "redCard"
+  }
+
 }

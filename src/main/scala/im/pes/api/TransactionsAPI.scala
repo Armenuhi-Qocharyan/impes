@@ -1,5 +1,7 @@
 package im.pes.api
 
+import java.time.LocalDate
+
 import akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport
 import akka.http.scaladsl.marshalling.ToResponseMarshallable
 import akka.http.scaladsl.model.StatusCodes
@@ -36,12 +38,17 @@ object TransactionsAPI extends TransactionsJsonSupport {
           }
         }
     } ~
-      path(Paths.buyTeam / IntNumber) { teamTransactionId =>
+      path(Paths.teamsTransactions / IntNumber) { teamTransactionId =>
         post {
           headerValueByName(CommonConstants.token) { token =>
             complete(buyTeam(teamTransactionId, token))
           }
-        }
+        } ~
+          delete {
+            headerValueByName(CommonConstants.token) { token =>
+              complete(deleteTeamTransaction(teamTransactionId, token))
+            }
+          }
       } ~
       path(Paths.playersTransactions) {
         get {
@@ -57,12 +64,17 @@ object TransactionsAPI extends TransactionsJsonSupport {
             }
           }
       } ~
-      path(Paths.buyPlayer / IntNumber) { playerTransactionId =>
+      path(Paths.playersTransactions / IntNumber) { playerTransactionId =>
         post {
           headerValueByName(CommonConstants.token) { token =>
             complete(buyPlayer(playerTransactionId, token))
           }
-        }
+        } ~
+          delete {
+            headerValueByName(CommonConstants.token) { token =>
+              complete(deletePlayerTransaction(playerTransactionId, token))
+            }
+          }
       }
 
   def getTeamsTransactions(params: Map[String, String]): ToResponseMarshallable = {
@@ -70,8 +82,10 @@ object TransactionsAPI extends TransactionsJsonSupport {
   }
 
   def addTeamTransaction(partialTeamTransaction: PartialTeamTransaction, token: String): ToResponseMarshallable = {
+    if (Transactions.checkTeamTransaction(partialTeamTransaction.teamId)) {
+      return StatusCodes.BadRequest
+    }
     val userId = DBUtils.getIdByToken(token)
-    // TODO check if team is already selling
     val team = Teams.getTeamData(partialTeamTransaction.teamId)
     if (null != team && team.owner == userId) {
       val priceDiff: Float = (partialTeamTransaction.price - team.budget).toFloat / team.budget
@@ -99,9 +113,21 @@ object TransactionsAPI extends TransactionsJsonSupport {
     Users.updateUser(seller.id, UpdateUser(None, None, None, None, Option(seller.budget + teamTransaction.price)))
     Users.updateUser(userId, UpdateUser(None, None, None, None, Option(user.budget - teamTransaction.price)))
     Teams.updateTeam(teamTransaction.teamId, UpdateTeam(None, None, None, Option(userId)))
-    //TODO add transaction history
+    TransactionsHistory.addTeamTransactionHistory(teamTransaction.teamId, seller.id, userId, teamTransaction.price,
+      LocalDate.now().toString)
     Transactions.deleteTeamTransaction(teamTransactionId)
     StatusCodes.NoContent
+  }
+
+  def deleteTeamTransaction(id: Int, token: String): ToResponseMarshallable = {
+    val userId = DBUtils.getIdByToken(token)
+    val teamTransaction = Transactions.getTeamTransaction(id)
+    if (Teams.checkTeam(teamTransaction.teamId, userId)) {
+      Transactions.deleteTeamTransaction(id)
+      StatusCodes.NoContent
+    } else {
+      StatusCodes.Forbidden
+    }
   }
 
   def getPlayersTransactions(params: Map[String, String]): ToResponseMarshallable = {
@@ -110,8 +136,10 @@ object TransactionsAPI extends TransactionsJsonSupport {
 
   def addPlayerTransaction(partialPlayerTransaction: PartialPlayerTransaction,
                            token: String): ToResponseMarshallable = {
+    if (Transactions.checkPlayerTransaction(partialPlayerTransaction.playerId)) {
+      return StatusCodes.BadRequest
+    }
     val userId = DBUtils.getIdByToken(token)
-    // TODO check if player is already selling
     val player = Players.getPlayerData(partialPlayerTransaction.playerId)
     if (Players.checkPlayer(partialPlayerTransaction.playerId, userId)) {
       val priceDiff: Float = (partialPlayerTransaction.price - player.cost).toFloat / player.cost
@@ -140,9 +168,22 @@ object TransactionsAPI extends TransactionsJsonSupport {
     Teams.updateTeam(team.id, UpdateTeam(None, Option(team.budget - playerTransaction.price), None, None))
     Players.updatePlayer(playerTransaction.playerId,
       UpdatePlayer(None, Option(team.id), None, None, None, None, None, None, None))
-    //TODO add transaction history
+    TransactionsHistory
+      .addPlayerTransactionHistory(playerTransaction.playerId, sellersTeam.id, team.id, playerTransaction.price,
+        LocalDate.now().toString)
     Transactions.deletePlayerTransaction(playerTransactionId)
     StatusCodes.NoContent
+  }
+
+  def deletePlayerTransaction(id: Int, token: String): ToResponseMarshallable = {
+    val userId = DBUtils.getIdByToken(token)
+    val playerTransaction = Transactions.getPlayerTransaction(id)
+    if (Players.checkPlayer(playerTransaction.playerId, userId)) {
+      Transactions.deletePlayerTransaction(id)
+      StatusCodes.NoContent
+    } else {
+      StatusCodes.Forbidden
+    }
   }
 
 }

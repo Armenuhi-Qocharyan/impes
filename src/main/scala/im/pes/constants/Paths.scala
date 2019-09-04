@@ -12,8 +12,11 @@ object Paths {
   val teamsStatistics = "teamsStatistics"
   val playersStatistics = "playersStatistics"
   val teamsTransactions = "teamsTransactions"
-  val buyTeam = "buyTeam"
   val playersTransactions = "playersTransactions"
-  val buyPlayer = "buyPlayer"
+  val teamsTransactionsHistory = "teamsTransactionsHistory"
+  val playersTransactionsHistory = "playersTransactionsHistory"
+  val games = "games"
+  val summary = "summary"
+  val playersData = "playersData"
 
 }
