@@ -2,26 +2,17 @@ package im.pes.api
 
 import java.time.LocalDate
 
-import akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport
 import akka.http.scaladsl.marshalling.ToResponseMarshallable
 import akka.http.scaladsl.model.StatusCodes
 import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.server.Route
-import im.pes.Health
-import im.pes.constants.{CommonConstants, Paths}
-import im.pes.db._
+import com.github.dwickern.macros.NameOf.nameOf
+import im.pes.constants.{CommonConstants, Paths, Tables}
+import im.pes.db.{Players, Teams, Transactions, TransactionsHistory, Users}
+import im.pes.db.Transactions.{addPlayerTransactionSchema, addTeamTransactionSchema, playersTransactionsConstants, teamsTransactionsConstants}
 import im.pes.utils.DBUtils
-import spray.json.{DefaultJsonProtocol, RootJsonFormat}
 
-trait TransactionsJsonSupport extends SprayJsonSupport with DefaultJsonProtocol {
-  implicit val healthFormat: RootJsonFormat[Health] = jsonFormat2(Health)
-  implicit val partialTeamTransactionFormat: RootJsonFormat[PartialTeamTransaction] = jsonFormat2(
-    PartialTeamTransaction)
-  implicit val partialPlayerTransactionFormat: RootJsonFormat[PartialPlayerTransaction] = jsonFormat2(
-    PartialPlayerTransaction)
-}
-
-object TransactionsAPI extends TransactionsJsonSupport {
+object TransactionsAPI {
 
   def getRoute: Route =
     path(Paths.teamsTransactions) {
@@ -32,7 +23,7 @@ object TransactionsAPI extends TransactionsJsonSupport {
       } ~
         post {
           headerValueByName(CommonConstants.token) { token =>
-            entity(as[PartialTeamTransaction]) { teamTransaction =>
+            entity(as[String]) { teamTransaction =>
               complete(addTeamTransaction(teamTransaction, token))
             }
           }
@@ -58,7 +49,7 @@ object TransactionsAPI extends TransactionsJsonSupport {
         } ~
           post {
             headerValueByName(CommonConstants.token) { token =>
-              entity(as[PartialPlayerTransaction]) { playerTransaction =>
+              entity(as[String]) { playerTransaction =>
                 complete(addPlayerTransaction(playerTransaction, token))
               }
             }
@@ -81,18 +72,28 @@ object TransactionsAPI extends TransactionsJsonSupport {
     Transactions.getTeamsTransactions(params)
   }
 
-  def addTeamTransaction(partialTeamTransaction: PartialTeamTransaction, token: String): ToResponseMarshallable = {
-    if (Transactions.checkTeamTransaction(partialTeamTransaction.teamId)) {
+  def addTeamTransaction(teamTransaction: String, token: String): ToResponseMarshallable = {
+    val teamTransactionDf =
+      try {
+        DBUtils.dataToDf(addTeamTransactionSchema, teamTransaction)
+      } catch {
+        case _: NullPointerException => return StatusCodes.BadRequest
+      }
+    val teamTransactionData = teamTransactionDf.collect()(0)
+    val teamId = teamTransactionData.getAs[Int](nameOf(teamsTransactionsConstants.teamId))
+    if (Transactions.checkTeamTransaction(teamId)) {
       return StatusCodes.BadRequest
     }
     val userId = DBUtils.getIdByToken(token)
-    val team = Teams.getTeamData(partialTeamTransaction.teamId)
-    if (null != team && team.owner == userId) {
-      val priceDiff: Float = (partialTeamTransaction.price - team.budget).toFloat / team.budget
+    val team = Teams.getTeamData(teamId)
+    if (null != team && team.getAs[Int](Tables.Teams.owner) == userId) {
+      val teamBudget = team.getAs[Int](Tables.Teams.budget)
+      val priceDiff: Float =
+        (teamTransactionData.getAs[Int](nameOf(teamsTransactionsConstants.price)) - teamBudget).toFloat / teamBudget
       if (priceDiff > 0.1 || priceDiff < -0.1) {
         return StatusCodes.BadRequest
       }
-      Transactions.addTeamTransaction(partialTeamTransaction)
+      Transactions.addTeamTransaction(teamTransactionDf)
       StatusCodes.OK
     } else {
       StatusCodes.Forbidden
@@ -106,15 +107,18 @@ object TransactionsAPI extends TransactionsJsonSupport {
       return StatusCodes.Forbidden
     }
     val teamTransaction = Transactions.getTeamTransaction(teamTransactionId)
-    if (user.budget < teamTransaction.price) {
+    val userBudget = user.getAs[Int](Tables.Users.budget)
+    val teamPrice = teamTransaction.getAs[Int](Tables.TeamsTransactions.price)
+    if (userBudget < teamPrice) {
       return StatusCodes.BadRequest
     }
-    val seller = Users.getUserData(Teams.getTeamData(teamTransaction.teamId).owner)
-    Users.updateUser(seller.id, UpdateUser(None, None, None, None, Option(seller.budget + teamTransaction.price)))
-    Users.updateUser(userId, UpdateUser(None, None, None, None, Option(user.budget - teamTransaction.price)))
-    Teams.updateTeam(teamTransaction.teamId, UpdateTeam(None, None, None, Option(userId)))
-    TransactionsHistory.addTeamTransactionHistory(teamTransaction.teamId, seller.id, userId, teamTransaction.price,
-      LocalDate.now().toString)
+    val teamId = teamTransaction.getAs[Int](Tables.TeamsTransactions.teamId)
+    val sellerId = Teams.getTeamData(teamId).getAs[Int](Tables.Teams.owner)
+    val seller = Users.getUserData(sellerId)
+    Users.updateUser(sellerId, Map(Tables.Users.budget -> (seller.getAs[Int](Tables.Users.budget) + teamPrice)))
+    Users.updateUser(userId, Map(Tables.Users.budget -> (userBudget - teamPrice)))
+    Teams.updateTeam(teamId, Map(Tables.Teams.owner -> userId))
+    TransactionsHistory.addTeamTransactionHistory(teamId, sellerId, userId, teamPrice, LocalDate.now().toString)
     Transactions.deleteTeamTransaction(teamTransactionId)
     StatusCodes.NoContent
   }
@@ -122,7 +126,10 @@ object TransactionsAPI extends TransactionsJsonSupport {
   def deleteTeamTransaction(id: Int, token: String): ToResponseMarshallable = {
     val userId = DBUtils.getIdByToken(token)
     val teamTransaction = Transactions.getTeamTransaction(id)
-    if (Teams.checkTeam(teamTransaction.teamId, userId)) {
+    if (null == teamTransaction) {
+      return StatusCodes.BadRequest
+    }
+    if (Teams.checkTeam(teamTransaction.getAs[Int](teamsTransactionsConstants.teamId), userId)) {
       Transactions.deleteTeamTransaction(id)
       StatusCodes.NoContent
     } else {
@@ -134,19 +141,28 @@ object TransactionsAPI extends TransactionsJsonSupport {
     Transactions.getPlayersTransactions(params)
   }
 
-  def addPlayerTransaction(partialPlayerTransaction: PartialPlayerTransaction,
-                           token: String): ToResponseMarshallable = {
-    if (Transactions.checkPlayerTransaction(partialPlayerTransaction.playerId)) {
+  def addPlayerTransaction(playerTransaction: String, token: String): ToResponseMarshallable = {
+    val playerTransactionDf =
+      try {
+        DBUtils.dataToDf(addPlayerTransactionSchema, playerTransaction)
+      } catch {
+        case _: NullPointerException => return StatusCodes.BadRequest
+      }
+    val playerTransactionRow = playerTransactionDf.collect()(0)
+    val playerId = playerTransactionRow.getAs[Int](nameOf(playersTransactionsConstants.playerId))
+    if (Transactions.checkPlayerTransaction(playerId)) {
       return StatusCodes.BadRequest
     }
     val userId = DBUtils.getIdByToken(token)
-    val player = Players.getPlayerData(partialPlayerTransaction.playerId)
-    if (Players.checkPlayer(partialPlayerTransaction.playerId, userId)) {
-      val priceDiff: Float = (partialPlayerTransaction.price - player.cost).toFloat / player.cost
+    val player = Players.getPlayerData(playerId)
+    if (Players.checkPlayer(playerId, userId)) {
+      val playerCost = player.getAs[Int](Tables.Players.cost)
+      val priceDiff: Float =
+        (playerTransactionRow.getAs[Int](nameOf(teamsTransactionsConstants.price)) - playerCost).toFloat / playerCost
       if (priceDiff > 0.1 || priceDiff < -0.1) {
         return StatusCodes.BadRequest
       }
-      Transactions.addPlayerTransaction(partialPlayerTransaction)
+      Transactions.addPlayerTransaction(playerTransactionDf)
       StatusCodes.OK
     } else {
       StatusCodes.Forbidden
@@ -160,17 +176,24 @@ object TransactionsAPI extends TransactionsJsonSupport {
     }
     val playerTransaction = Transactions.getPlayerTransaction(playerTransactionId)
     val team = Teams.getUserTeam(userId)
-    if (null == team || team.budget < playerTransaction.price) {
+    if (null == team) {
       return StatusCodes.BadRequest
     }
-    val sellersTeam = Teams.getTeamData(Players.getPlayerData(playerTransaction.playerId).teamId)
-    Teams.updateTeam(sellersTeam.id, UpdateTeam(None, Option(sellersTeam.budget + playerTransaction.price), None, None))
-    Teams.updateTeam(team.id, UpdateTeam(None, Option(team.budget - playerTransaction.price), None, None))
-    Players.updatePlayer(playerTransaction.playerId,
-      UpdatePlayer(None, Option(team.id), None, None, None, None, None, None, None))
+    val teamBudget = team.getAs[Int](Tables.Teams.budget)
+    val playerPrice = playerTransaction.getAs[Int](Tables.PlayersTransactions.price)
+    if (teamBudget < playerPrice) {
+      return StatusCodes.BadRequest
+    }
+    val playerId = playerTransaction.getAs[Int](Tables.PlayersTransactions.playerId)
+    val sellersTeamId = Players.getPlayerData(playerId).getAs[Int](Tables.Players.teamId)
+    val sellersTeam = Teams.getTeamData(sellersTeamId)
+    val teamId = team.getAs[Int](Tables.Teams.id)
+    Teams.updateTeam(sellersTeamId,
+      Map(Tables.Teams.budget -> (sellersTeam.getAs[Int](Tables.Teams.budget) + playerPrice)))
+    Teams.updateTeam(teamId, Map(Tables.Teams.budget -> (teamBudget - playerPrice)))
+    Players.updatePlayer(playerId, Map(Tables.Players.teamId -> teamId))
     TransactionsHistory
-      .addPlayerTransactionHistory(playerTransaction.playerId, sellersTeam.id, team.id, playerTransaction.price,
-        LocalDate.now().toString)
+      .addPlayerTransactionHistory(playerId, sellersTeamId, teamId, playerPrice, LocalDate.now().toString)
     Transactions.deletePlayerTransaction(playerTransactionId)
     StatusCodes.NoContent
   }
@@ -178,7 +201,10 @@ object TransactionsAPI extends TransactionsJsonSupport {
   def deletePlayerTransaction(id: Int, token: String): ToResponseMarshallable = {
     val userId = DBUtils.getIdByToken(token)
     val playerTransaction = Transactions.getPlayerTransaction(id)
-    if (Players.checkPlayer(playerTransaction.playerId, userId)) {
+    if (null == playerTransaction) {
+      return StatusCodes.BadRequest
+    }
+    if (Players.checkPlayer(playerTransaction.getAs[Int](playersTransactionsConstants.playerId), userId)) {
       Transactions.deletePlayerTransaction(id)
       StatusCodes.NoContent
     } else {

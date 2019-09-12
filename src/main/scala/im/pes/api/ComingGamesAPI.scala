@@ -1,23 +1,15 @@
 package im.pes.api
 
-import akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport
 import akka.http.scaladsl.marshalling.ToResponseMarshallable
 import akka.http.scaladsl.model.StatusCodes
 import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.server.Route
-import im.pes.Health
 import im.pes.constants.{CommonConstants, Paths}
-import im.pes.db.{ComingGames, PartialComingGame, UpdateComingGame}
+import im.pes.db.ComingGames
+import im.pes.db.ComingGames.{addComingGameSchema, updateComingGameSchema}
 import im.pes.utils.DBUtils
-import spray.json.{DefaultJsonProtocol, RootJsonFormat}
 
-trait ComingGameJsonSupport extends SprayJsonSupport with DefaultJsonProtocol {
-  implicit val healthFormat: RootJsonFormat[Health] = jsonFormat2(Health)
-  implicit val partialComingGameFormat: RootJsonFormat[PartialComingGame] = jsonFormat5(PartialComingGame)
-  implicit val updateComingGameFormat: RootJsonFormat[UpdateComingGame] = jsonFormat5(UpdateComingGame)
-}
-
-object ComingGamesAPI extends ComingGameJsonSupport {
+object ComingGamesAPI {
 
   def getRoute: Route =
     path(Paths.comingGames) {
@@ -28,7 +20,7 @@ object ComingGamesAPI extends ComingGameJsonSupport {
       } ~
         post {
           path(Paths.comingGames) {
-            entity(as[PartialComingGame]) { comingGame =>
+            entity(as[String]) { comingGame =>
               headerValueByName(CommonConstants.token) { token =>
                 complete(addComingGame(comingGame, token))
               }
@@ -42,7 +34,7 @@ object ComingGamesAPI extends ComingGameJsonSupport {
         } ~
           put {
             headerValueByName(CommonConstants.token) { token =>
-              entity(as[UpdateComingGame]) { comingGame =>
+              entity(as[String]) { comingGame =>
                 complete(updateComingGame(id, comingGame, token))
               }
             }
@@ -67,21 +59,29 @@ object ComingGamesAPI extends ComingGameJsonSupport {
     }
   }
 
-  def addComingGame(partialComingGame: PartialComingGame, token: String): ToResponseMarshallable = {
+  def addComingGame(comingGame: String, token: String): ToResponseMarshallable = {
     if (DBUtils.isAdmin(DBUtils.getIdByToken(token))) {
       //TODO check fields values
-      ComingGames.addComingGame(partialComingGame)
+      val comingGameDf =
+        try {
+          DBUtils.dataToDf(addComingGameSchema, comingGame)
+        } catch {
+          case _: NullPointerException => return StatusCodes.BadRequest
+        }
+      //TODO check fields values
+      ComingGames.addComingGame(comingGameDf)
       StatusCodes.OK
     } else {
       StatusCodes.Forbidden
     }
   }
 
-  def updateComingGame(id: Int, updateComingGame: UpdateComingGame, token: String): ToResponseMarshallable = {
+  def updateComingGame(id: Int, updateComingGame: String, token: String): ToResponseMarshallable = {
     if (DBUtils.isAdmin(DBUtils.getIdByToken(token))) {
       //TODO check fields values
-      ComingGames.updateComingGame(id, updateComingGame)
-      StatusCodes.OK
+      val updateComingGameDf = DBUtils.dataToDf(updateComingGameSchema, updateComingGame)
+        ComingGames.updateComingGame(id, updateComingGameDf)
+        StatusCodes.OK
     } else {
       StatusCodes.Forbidden
     }

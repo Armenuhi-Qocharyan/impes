@@ -1,66 +1,59 @@
 package im.pes.db
 
-import akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport
-import im.pes.Health
-import im.pes.constants.{CommonConstants, Tables}
-import im.pes.main.spark
-import im.pes.utils.{BaseTable, DBUtils}
-import spray.json._
+import com.github.dwickern.macros.NameOf.nameOf
+import im.pes.constants.Tables
+import im.pes.utils.DBUtils
+import org.apache.spark.sql.types.{DataTypes, StructType}
+import org.apache.spark.sql.{DataFrame, Row, functions}
 
-case class User(id: Int, email: String, password: String, name: String, age: Int, budget: Int)
+object Users {
 
-case class PartialUser(email: String, password: String, name: String, age: Int)
-
-case class Login(email: String, password: String)
-
-case class UpdateUser(email: Option[String], password: Option[String], name: Option[String],
-                      age: Option[Int], budget: Option[Int]) extends BaseTable
-
-trait UserJsonSupport extends SprayJsonSupport with DefaultJsonProtocol {
-  implicit val healthFormat: RootJsonFormat[Health] = jsonFormat2(Health)
-  implicit val userFormat: RootJsonFormat[User] = jsonFormat6(User)
-}
-
-object Users extends UserJsonSupport {
-
-  private val usersConstants = Tables.Users
+  val usersConstants: Tables.Users.type = Tables.Users
+  val addUserSchema: StructType = (new StructType)
+    .add(nameOf(usersConstants.email), DataTypes.StringType, nullable = false)
+    .add(nameOf(usersConstants.password), DataTypes.StringType, nullable = false)
+    .add(nameOf(usersConstants.age), DataTypes.IntegerType, nullable = false)
+    .add(nameOf(usersConstants.name), DataTypes.StringType, nullable = false)
+    .add(nameOf(usersConstants.budget), DataTypes.IntegerType, nullable = false)
+  val loginSchema: StructType = (new StructType)
+    .add(nameOf(usersConstants.email), DataTypes.StringType, nullable = false)
+    .add(nameOf(usersConstants.password), DataTypes.StringType, nullable = false)
+  val updateUserSchema: StructType = (new StructType)
+    .add(nameOf(usersConstants.email), DataTypes.StringType)
+    .add(nameOf(usersConstants.password), DataTypes.StringType)
+    .add(nameOf(usersConstants.age), DataTypes.IntegerType)
+    .add(nameOf(usersConstants.name), DataTypes.StringType)
+    .add(nameOf(usersConstants.budget), DataTypes.IntegerType)
 
   def getUsers(params: Map[String, String]): String = {
-    DBUtils.getTableData(usersConstants, params, Seq(usersConstants.password))
+    DBUtils.getTableDataAsString(usersConstants, params, Seq(usersConstants.password))
   }
 
   def getUser(id: Int): String = {
-    DBUtils.getTableDataByPrimaryKey(usersConstants, id, Seq(usersConstants.password))
+    DBUtils.getTableDataAsStringByPrimaryKey(usersConstants, id, Seq(usersConstants.password))
   }
 
-  def addUser(partialUser: PartialUser): Unit = {
-    addUser(partialUser.email, partialUser.password, partialUser.name, partialUser.age)
+  def addUser(df: DataFrame): Unit = {
+    val id = DBUtils.getTable(usersConstants, rename = false).count() + 1
+    DBUtils.addDataToTable(usersConstants.tableName,
+      DBUtils.renameColumnsToDBFormat(df, usersConstants).withColumn(usersConstants.id, functions.lit(id)))
   }
 
-  private def addUser(email: String, password: String, name: String, age: Int): Unit = {
-    val data = spark
-      .createDataFrame(Seq((DBUtils.getTable(usersConstants).count() + 1, email, password, age, name, 11 *
-        CommonConstants.playerMinCost * 1.2)))
-      .toDF(usersConstants.id, usersConstants.email, usersConstants.password, usersConstants.age, usersConstants.name,
-        usersConstants.budget)
-    DBUtils.addDataToTable(usersConstants.tableName, data)
+  def updateUser(id: Int, updateDf: DataFrame): Unit = {
+    val df = DBUtils.renameColumnsToDBFormat(updateDf, usersConstants)
+    updateUser(id, df.collect()(0).getValuesMap(df.columns))
   }
 
-  def updateUser(id: Int, updateUser: UpdateUser): Unit = {
-    DBUtils.updateDataInTable(id, updateUser, usersConstants)
+  def updateUser(id: Int, updateData: Map[String, Any]): Unit = {
+    DBUtils.updateDataInTable(id, updateData, usersConstants.tableName)
   }
 
   def deleteUser(id: Int): Unit = {
     DBUtils.deleteDataFromTable(usersConstants.tableName, id)
   }
 
-  def getUserData(id: Int): User = {
-    val user = DBUtils.getTableDataByPrimaryKey(usersConstants, id)
-    if (null == user) {
-      null
-    } else {
-      user.parseJson.convertTo[User]
-    }
+  def getUserData(id: Int): Row = {
+    DBUtils.getTableDataByPrimaryKey(usersConstants, id)
   }
 
 }

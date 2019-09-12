@@ -1,23 +1,17 @@
 package im.pes.api
 
-import akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport
 import akka.http.scaladsl.marshalling.ToResponseMarshallable
 import akka.http.scaladsl.model.StatusCodes
 import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.server.Route
-import im.pes.Health
+import com.github.dwickern.macros.NameOf.nameOf
 import im.pes.constants.{CommonConstants, Paths}
+import im.pes.db.Teams.{addTeamSchema, teamsConstants, updateTeamSchema}
+import im.pes.db.Users.usersConstants
 import im.pes.db._
 import im.pes.utils.DBUtils
-import spray.json.{DefaultJsonProtocol, RootJsonFormat}
 
-trait TeamJsonSupport extends SprayJsonSupport with DefaultJsonProtocol {
-  implicit val healthFormat: RootJsonFormat[Health] = jsonFormat2(Health)
-  implicit val partialTeamFormat: RootJsonFormat[PartialTeam] = jsonFormat4(PartialTeam)
-  implicit val updateTeamFormat: RootJsonFormat[UpdateTeam] = jsonFormat4(UpdateTeam)
-}
-
-object TeamsAPI extends TeamJsonSupport {
+object TeamsAPI {
 
   def getRoute: Route =
     path(Paths.teams) {
@@ -28,7 +22,7 @@ object TeamsAPI extends TeamJsonSupport {
       } ~
         post {
           headerValueByName(CommonConstants.token) { token =>
-            entity(as[PartialTeam]) { team =>
+            entity(as[String]) { team =>
               complete(addTeam(team, token))
             }
           }
@@ -40,7 +34,7 @@ object TeamsAPI extends TeamJsonSupport {
         } ~
           put {
             headerValueByName(CommonConstants.token) { token =>
-              entity(as[UpdateTeam]) { team =>
+              entity(as[String]) { team =>
                 complete(updateTeam(id, team, token))
               }
             }
@@ -65,36 +59,48 @@ object TeamsAPI extends TeamJsonSupport {
     }
   }
 
-  def addTeam(partialTeam: PartialTeam, token: String): ToResponseMarshallable = {
+  def addTeam(team: String, token: String): ToResponseMarshallable = {
     val userId = DBUtils.getIdByToken(token)
-    if (userId.equals(partialTeam.owner)) {
+    val teamDf =
+      try {
+        DBUtils.dataToDf(addTeamSchema, team)
+      } catch {
+        case _: NullPointerException => return StatusCodes.BadRequest
+      }
+    val teamData = teamDf.collect()(0)
+    if (userId == teamData.getAs[Int](nameOf(teamsConstants.owner))) {
       //TODO check fields values
       val user = Users.getUserData(userId)
-      if (null == user || partialTeam.budget > user.budget) {
+      val teamBudget = teamData.getAs[Int](nameOf(teamsConstants.budget))
+      val userBudget = user.getAs[Int](usersConstants.budget)
+      if (null == user || teamBudget > userBudget) {
         return StatusCodes.BadRequest
       }
-      Teams.addTeam(partialTeam, userId)
-      Users.updateUser(userId, UpdateUser(None, None, None, None, Option(user.budget - partialTeam.budget)))
+      Teams.addTeam(teamDf)
+      Users.updateUser(userId, Map(usersConstants.budget -> (userBudget - teamBudget)))
       StatusCodes.OK
     } else {
       StatusCodes.Forbidden
     }
   }
 
-  def updateTeam(id: Int, updateTeam: UpdateTeam, token: String): ToResponseMarshallable = {
+  def updateTeam(id: Int, updateTeam: String, token: String): ToResponseMarshallable = {
     val userId = DBUtils.getIdByToken(token)
+    val updateTeamDf = DBUtils.dataToDf(updateTeamSchema, updateTeam)
     if (DBUtils.isAdmin(userId)) {
       //TODO check fields values
-      Teams.updateTeam(id, updateTeam)
+      Teams.updateTeam(id, updateTeamDf)
       return StatusCodes.NoContent
     }
     if (Teams.checkTeam(id, userId)) {
       //TODO check what user may update
       //TODO check fields values
-      if (updateTeam.owner.isDefined && updateTeam.owner.get != userId) {
-        StatusCodes.BadRequest
+      val updateTeamData = updateTeamDf.collect()(0)
+      val owner = Option(updateTeamData.getAs[Int](nameOf(teamsConstants.owner)))
+      if (owner.isDefined && owner.get != userId) {
+        return StatusCodes.BadRequest
       }
-      Teams.updateTeam(id, updateTeam)
+      Teams.updateTeam(id, updateTeamDf)
       StatusCodes.NoContent
     } else {
       StatusCodes.Forbidden
@@ -113,8 +119,8 @@ object TeamsAPI extends TeamJsonSupport {
     if (Teams.checkTeam(id, userId)) {
       if (CommonConstants.defaultTeams.contains(id)) {
         val team = Teams.getTeamData(id)
-        Teams.updateTeam(id, UpdateTeam(None, None, None, Option(CommonConstants.admins.head)))
-        Transactions.addTeamTransaction(PartialTeamTransaction(id, team.budget))
+        Teams.updateTeam(id, Map(teamsConstants.owner -> CommonConstants.admins.head))
+        Transactions.addTeamTransaction(id, team.getAs(teamsConstants.budget))
       } else {
         for (player <- Players.getTeamPlayers(id)) {
           Players.deletePlayer(player.getInt(0), player.getInt(1))
@@ -123,7 +129,7 @@ object TeamsAPI extends TeamJsonSupport {
       }
       val user = Users.getUserData(userId)
       Users.updateUser(userId,
-        UpdateUser(None, None, None, None, Option(user.budget + 11 * CommonConstants.playerMinCost)))
+        Map(usersConstants.budget -> (user.getAs[Int](usersConstants.budget) + 11 * CommonConstants.playerMinCost)))
       StatusCodes.NoContent
     } else {
       StatusCodes.Forbidden

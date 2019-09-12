@@ -1,59 +1,56 @@
 package im.pes.db
 
-import akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport
-import im.pes.Health
+import com.github.dwickern.macros.NameOf.nameOf
 import im.pes.constants.Tables
-import im.pes.main.spark
+import im.pes.main.spark.implicits._
 import im.pes.utils.DBUtils
-import spray.json._
+import org.apache.spark.sql.types.{DataTypes, StructType}
+import org.apache.spark.sql.{DataFrame, Row, functions}
 
-case class TeamTransaction(id: Int, teamId: Int, price: Int)
+object Transactions {
 
-case class PartialTeamTransaction(teamId: Int, price: Int)
+  val teamsTransactionsConstants: Tables.TeamsTransactions.type = Tables.TeamsTransactions
+  val playersTransactionsConstants: Tables.PlayersTransactions.type = Tables.PlayersTransactions
 
-case class PlayerTransaction(id: Int, playerId: Int, price: Int)
-
-case class PartialPlayerTransaction(playerId: Int, price: Int)
-
-trait TransactionsJsonSupport extends SprayJsonSupport with DefaultJsonProtocol {
-  implicit val healthFormat: RootJsonFormat[Health] = jsonFormat2(Health)
-  implicit val teamTransactionFormat: RootJsonFormat[TeamTransaction] = jsonFormat3(TeamTransaction)
-  implicit val playerTransactionFormat: RootJsonFormat[PlayerTransaction] = jsonFormat3(PlayerTransaction)
-}
-
-object Transactions extends TransactionsJsonSupport {
-
-  private val teamsTransactionsConstants = Tables.TeamsTransactions
-  private val playersTransactionsConstants = Tables.PlayersTransactions
+  val addTeamTransactionSchema: StructType = (new StructType)
+    .add(nameOf(teamsTransactionsConstants.teamId), DataTypes.IntegerType, nullable = false)
+    .add(nameOf(teamsTransactionsConstants.price), DataTypes.IntegerType, nullable = false)
+  val addPlayerTransactionSchema: StructType = (new StructType)
+    .add(nameOf(playersTransactionsConstants.playerId), DataTypes.IntegerType, nullable = false)
+    .add(nameOf(playersTransactionsConstants.price), DataTypes.IntegerType, nullable = false)
 
   def getTeamsTransactions(params: Map[String, String]): String = {
-    DBUtils.getTableData(teamsTransactionsConstants, params)
+    DBUtils.getTableDataAsString(teamsTransactionsConstants, params)
   }
 
   def getPlayersTransactions(params: Map[String, String]): String = {
-    DBUtils.getTableData(playersTransactionsConstants, params)
-  }
-
-  def addTeamTransaction(partialTeamTransaction: PartialTeamTransaction): Unit = {
-    addTeamTransaction(partialTeamTransaction.teamId, partialTeamTransaction.price)
+    DBUtils.getTableDataAsString(playersTransactionsConstants, params)
   }
 
   def addTeamTransaction(teamId: Int, price: Int): Unit = {
-    val data = spark
-      .createDataFrame(Seq((DBUtils.getTable(teamsTransactionsConstants).count() + 1, teamId, price)))
-      .toDF(teamsTransactionsConstants.id, teamsTransactionsConstants.teamId, teamsTransactionsConstants.price)
-    DBUtils.addDataToTable(teamsTransactionsConstants.tableName, data)
+    addTeamTransaction(
+      Seq((teamId, price)).toDF(teamsTransactionsConstants.teamId, teamsTransactionsConstants.price),
+      rename = false)
   }
 
-  def addPlayerTransaction(partialPlayerTransaction: PartialPlayerTransaction): Unit = {
-    addPlayerTransaction(partialPlayerTransaction.playerId, partialPlayerTransaction.price)
+  def addTeamTransaction(df: DataFrame, rename: Boolean = true): Unit = {
+    val id = DBUtils.getTable(teamsTransactionsConstants, rename = false).count() + 1
+    val addDf = if (rename) DBUtils.renameColumnsToDBFormat(df, teamsTransactionsConstants) else df
+    DBUtils.addDataToTable(teamsTransactionsConstants.tableName,
+      addDf.withColumn(teamsTransactionsConstants.id, functions.lit(id)))
   }
 
   def addPlayerTransaction(playerId: Int, price: Int): Unit = {
-    val data = spark
-      .createDataFrame(Seq((DBUtils.getTable(playersTransactionsConstants).count() + 1, playerId, price)))
-      .toDF(playersTransactionsConstants.id, playersTransactionsConstants.playerId, playersTransactionsConstants.price)
-    DBUtils.addDataToTable(playersTransactionsConstants.tableName, data)
+    addPlayerTransaction(
+      Seq((playerId, price)).toDF(playersTransactionsConstants.playerId, playersTransactionsConstants.price),
+      rename = false)
+  }
+
+  def addPlayerTransaction(df: DataFrame, rename: Boolean = true): Unit = {
+    val id = DBUtils.getTable(playersTransactionsConstants, rename = false).count() + 1
+    val addDf = if (rename) DBUtils.renameColumnsToDBFormat(df, teamsTransactionsConstants) else df
+    DBUtils.addDataToTable(playersTransactionsConstants.tableName,
+      addDf.withColumn(playersTransactionsConstants.id, functions.lit(id)))
   }
 
   def deleteTeamTransaction(id: Int): Unit = {
@@ -64,31 +61,22 @@ object Transactions extends TransactionsJsonSupport {
     DBUtils.deleteDataFromTable(playersTransactionsConstants.tableName, id)
   }
 
-  def getTeamTransaction(id: Int): TeamTransaction = {
-    val teamTransaction = DBUtils.getTableDataByPrimaryKey(teamsTransactionsConstants, id)
-    if (null == teamTransaction) {
-      null
-    } else {
-      teamTransaction.parseJson.convertTo[TeamTransaction]
-    }
+  def getTeamTransaction(id: Int): Row = {
+    DBUtils.getTableDataByPrimaryKey(teamsTransactionsConstants, id)
   }
 
-  def getPlayerTransaction(id: Int): PlayerTransaction = {
-    val playerTransaction = DBUtils.getTableDataByPrimaryKey(playersTransactionsConstants, id)
-    if (null == playerTransaction) {
-      null
-    } else {
-      playerTransaction.parseJson.convertTo[PlayerTransaction]
-    }
+  def getPlayerTransaction(id: Int): Row = {
+    DBUtils.getTableDataByPrimaryKey(playersTransactionsConstants, id)
   }
 
   def checkTeamTransaction(teamId: Int): Boolean = {
-    DBUtils.getTable(teamsTransactionsConstants).filter(s"${teamsTransactionsConstants.teamId} = $teamId").count() != 0
+    DBUtils.getTable(teamsTransactionsConstants, rename = false)
+      .filter(s"${teamsTransactionsConstants.teamId} = $teamId").count() != 0
   }
 
   def checkPlayerTransaction(playerId: Int): Boolean = {
-    DBUtils.getTable(playersTransactionsConstants).filter(s"${playersTransactionsConstants.playerId} = $playerId")
-      .count() != 0
+    DBUtils.getTable(playersTransactionsConstants, rename = false)
+      .filter(s"${playersTransactionsConstants.playerId} = $playerId").count() != 0
   }
 
 

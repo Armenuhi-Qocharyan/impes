@@ -30,8 +30,10 @@ object CommonConstants {
   val routeHost = "127.0.0.1"
   val routePort = 8080
 
-  val sqlDeleteQuery: (String, Int) => String = (tableName: String, searchValue: Int) =>
+  val sqlDeleteByPrimaryKeyQuery: (String, Int) => String = (tableName: String, searchValue: Int) =>
     s"DELETE FROM $tableName WHERE ${Tables.primaryKey} = $searchValue"
+  val sqlDeleteQuery: (String, String, Int) => String = (tableName: String, searchKey: String, searchValue: Int) =>
+    s"DELETE FROM $tableName WHERE $searchKey = $searchValue"
   val sqlDeleteTokenQuery: String => String = (searchValue: String) =>
     s"DELETE FROM ${Tables.Sessions.tableName} WHERE ${Tables.Sessions.token} = '$searchValue'"
   val sqlUpdateQuery: (String, String, Int) => String = (tableName: String, data: String, searchValue: Int) =>
@@ -42,6 +44,7 @@ object CommonConstants {
   val sqlUpdateReplaceJsonQuery: (String, String, String, String, Int) => String =
     (tableName: String, key: String, replaceData: String, searchKey: String, searchValue: Int) =>
     s"UPDATE $tableName SET $key = JSON_REPLACE($key$replaceData) WHERE $searchKey = $searchValue"
+  val jsonExtractFormat: (String, String) => String = (data: String, key: String) => s"JSON_EXTRACT($data, '$$.$key')"
 
   val admins: Seq[Int] = Seq(1)
   val defaultTeams: Seq[Int] = Seq(1)
@@ -49,8 +52,7 @@ object CommonConstants {
 
   val token = "Token"
 
-  val defaultSummaryJson = s"""
-    s{\"${Tables.Summary.goals}\": 0, \"${Tables.Summary.donePasses}\": 0, \"${
+  val defaultSummaryJson = s"""{\"${Tables.Summary.goals}\": 0, \"${Tables.Summary.donePasses}\": 0, \"${
       Tables.Summary.smartPasses
     }\": 0, \"${Tables.Summary.passes}\": 0, \"${Tables.Summary.doneShots}\": 0, \"${
       Tables.Summary.shots

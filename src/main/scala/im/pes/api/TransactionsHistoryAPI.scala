@@ -9,14 +9,14 @@ import im.pes.db.TransactionsHistory
 object TransactionsHistoryAPI {
 
   def getRoute: Route =
-    path(Paths.teamsTransactions) {
+    path(Paths.teamsTransactionsHistory) {
       get {
         parameterMap { params =>
           complete(getTeamsTransactionsHistory(params))
         }
       }
     } ~
-      path(Paths.playersTransactions) {
+      path(Paths.playersTransactionsHistory) {
         get {
           parameterMap { params =>
             complete(getPlayersTransactionsHistory(params))

@@ -1,95 +1,93 @@
 package im.pes.db
 
-import akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport
-import im.pes.Health
+import com.github.dwickern.macros.NameOf.nameOf
 import im.pes.constants.{CommonConstants, Tables}
-import im.pes.main.spark
-import im.pes.utils.{BaseTable, DBUtils}
-import org.apache.spark.sql.Row
-import spray.json._
+import im.pes.main.spark.implicits._
+import im.pes.utils.DBUtils
+import org.apache.spark.sql.types.{DataTypes, StructType}
+import org.apache.spark.sql.{DataFrame, Row, functions}
 
-case class Player(id: Int, name: String, teamId: Int, position: String, cost: Int, age: Int, height: Int, weight: Int,
-                  skills: Int, gameIntelligence: Int, teamPlayer: Int, physique: Int)
+object Players {
 
-case class PartialPlayer(name: String, teamId: Int, position: String, age: Int, height: Int, weight: Int,
-                         gameIntelligence: Int, teamPlayer: Int, physique: Int)
+  val playersConstants: Tables.Players.type = Tables.Players
+  val addPlayerSchema: StructType = (new StructType)
+    .add(nameOf(playersConstants.name), DataTypes.StringType, nullable = false)
+    .add(nameOf(playersConstants.teamId), DataTypes.IntegerType, nullable = false)
+    .add(nameOf(playersConstants.position), DataTypes.StringType, nullable = false)
+    .add(nameOf(playersConstants.age), DataTypes.IntegerType, nullable = false)
+    .add(nameOf(playersConstants.height), DataTypes.IntegerType, nullable = false)
+    .add(nameOf(playersConstants.weight), DataTypes.IntegerType, nullable = false)
+    .add(nameOf(playersConstants.gameIntelligence), DataTypes.IntegerType, nullable = false)
+    .add(nameOf(playersConstants.teamPlayer), DataTypes.IntegerType, nullable = false)
+    .add(nameOf(playersConstants.physique), DataTypes.IntegerType, nullable = false)
+  val updatePlayerSchema: StructType = (new StructType)
+    .add(nameOf(playersConstants.name), DataTypes.StringType)
+    .add(nameOf(playersConstants.teamId), DataTypes.IntegerType)
+    .add(nameOf(playersConstants.position), DataTypes.StringType)
+    .add(nameOf(playersConstants.age), DataTypes.IntegerType)
+    .add(nameOf(playersConstants.height), DataTypes.IntegerType)
+    .add(nameOf(playersConstants.weight), DataTypes.IntegerType)
+    .add(nameOf(playersConstants.gameIntelligence), DataTypes.IntegerType)
+    .add(nameOf(playersConstants.teamPlayer), DataTypes.IntegerType)
+    .add(nameOf(playersConstants.physique), DataTypes.IntegerType)
 
-case class UpdatePlayer(name: Option[String], teamId: Option[Int], position: Option[String], age: Option[Int],
-                        height: Option[Int], weight: Option[Int], gameIntelligence: Option[Int],
-                        teamPlayer: Option[Int], physique: Option[Int]) extends BaseTable
-
-case class UpdatePlayerWithSkills(name: Option[String], teamId: Option[Int], position: Option[String],
-                                  cost: Option[Int],
-                                  age: Option[Int], height: Option[Int], weight: Option[Int], skills: Option[Int],
-                                  gameIntelligence: Option[Int], teamPlayer: Option[Int],
-                                  physique: Option[Int]) extends BaseTable
-
-trait PlayerJsonSupport extends SprayJsonSupport with DefaultJsonProtocol {
-  implicit val healthFormat: RootJsonFormat[Health] = jsonFormat2(Health)
-  implicit val playerFormat: RootJsonFormat[Player] = jsonFormat12(Player)
-}
-
-object Players extends PlayerJsonSupport {
-
-  private val playersConstants = Tables.Players
 
   def getPlayers(params: Map[String, String]): String = {
-    DBUtils.getTableData(playersConstants, params)
+    DBUtils.getTableDataAsString(playersConstants, params)
   }
 
   def getPlayer(id: Int): String = {
-    DBUtils.getTableDataByPrimaryKey(playersConstants, id)
+    DBUtils.getTableDataAsStringByPrimaryKey(playersConstants, id)
   }
 
-  def addPlayer(partialPlayer: PartialPlayer, skills: Int, cost: Int): Unit = {
-    addPlayer(partialPlayer.teamId, partialPlayer.name, partialPlayer.position, cost, partialPlayer.age,
-      partialPlayer.height, partialPlayer.weight, skills, partialPlayer.gameIntelligence, partialPlayer.teamPlayer,
-      partialPlayer.physique)
+  def addPlayer(df: DataFrame, cost: Int, skills: Int): Unit = {
+    val id = DBUtils.getTable(playersConstants, rename = false).count() + 1
+    DBUtils.addDataToTable(playersConstants.tableName,
+      DBUtils.renameColumnsToDBFormat(df, playersConstants).withColumn(playersConstants.id, functions.lit(id))
+        .withColumn(playersConstants.cost, functions.lit(cost))
+        .withColumn(playersConstants.skills, functions.lit(skills)))
   }
 
-  private def addPlayer(teamId: Int, name: String, position: String, cost: Int, age: Int, height: Int, weight: Int,
-                        skills: Int, gameIntelligence: Int, teamPlayer: Int, physique: Int): Unit = {
-    val data = spark.createDataFrame(
-      Seq((DBUtils.getTable(playersConstants).count() +
-        1, name, teamId, position, cost, age, height, weight, skills, gameIntelligence, teamPlayer, physique)))
-      .toDF(playersConstants.id, playersConstants.name, playersConstants.teamId, playersConstants.position,
-        playersConstants.cost, playersConstants.age, playersConstants.height, playersConstants.weight,
-        playersConstants.skills, playersConstants.gameIntelligence, playersConstants.teamPlayer,
-        playersConstants.physique)
-    DBUtils.addDataToTable(playersConstants.tableName, data)
+  def updatePlayer(playerId: Int, summaryData: Row): Unit = {
+    val player = getPlayerData(playerId)
+    val age = player.getAs[Int](playersConstants.age)
+    val gameIntelligence = calculateGameIntelligence(player.getAs[Int](playersConstants.gameIntelligence), summaryData)
+    val teamPlayer = calculateTeamPlayer(player.getAs[Int](playersConstants.teamPlayer), summaryData)
+    val physique = calculatePhysique(player.getAs[Int](playersConstants.physique), summaryData)
+    updatePlayer(playerId, Seq((gameIntelligence, teamPlayer, physique, age))
+      .toDF(nameOf(playersConstants.gameIntelligence), nameOf(playersConstants.teamPlayer),
+        nameOf(playersConstants.physique), nameOf(playersConstants.age)))
   }
 
-  def updatePlayer(playerData: PlayerData): Unit = {
-    val player = DBUtils.getTableDataByPrimaryKey(playersConstants, playerData.id).parseJson.convertTo[Player]
-    val gameIntelligence = calculateGameIntelligence(player.gameIntelligence, playerData)
-    val teamPlayer = calculateTeamPlayer(player.teamPlayer, playerData)
-    val physique = calculatePhysique(player.physique, playerData)
-    updatePlayer(playerData.id,
-      UpdatePlayer(None, None, None, None, None, None, Option(gameIntelligence), Option(teamPlayer), Option(physique)))
-  }
-
-  def updatePlayer(id: Int, updatePlayer: UpdatePlayer): Unit = {
-    if (updatePlayer.gameIntelligence.isDefined || updatePlayer.teamPlayer.isDefined ||
-      updatePlayer.physique.isDefined) {
-      DBUtils.updateDataInTable(id, getUpdatePlayerWithSkills(id, updatePlayer), playersConstants)
+  def updatePlayer(id: Int, updateDf: DataFrame): Unit = {
+    val updateData = updateDf.collect()(0)
+    if (Option(updateData.getAs[Int](nameOf(playersConstants.gameIntelligence))).isDefined ||
+      Option(updateData.getAs[Int](nameOf(playersConstants.teamPlayer))).isDefined ||
+      Option(updateData.getAs[Int](nameOf(playersConstants.physique))).isDefined ||
+      Option(updateData.getAs[Int](nameOf(playersConstants.age))).isDefined) {
+      val updatePlayerWithSkillsDf = getUpdatePlayerWithSkills(id, updateDf)
+      updatePlayer(id, updatePlayerWithSkillsDf.collect()(0).getValuesMap(updatePlayerWithSkillsDf.columns))
     } else {
-      DBUtils.updateDataInTable(id, updatePlayer, playersConstants)
+      val df = DBUtils.renameColumnsToDBFormat(updateDf, playersConstants)
+      updatePlayer(id, df.collect()(0).getValuesMap(df.columns))
     }
   }
 
-  private def getUpdatePlayerWithSkills(playerId: Int, updatePlayer: UpdatePlayer): UpdatePlayerWithSkills = {
-    val player = DBUtils.getTableDataByPrimaryKey(playersConstants, playerId).parseJson.convertTo[Player]
-    val gameIntelligence = if (updatePlayer.gameIntelligence.isDefined) updatePlayer.gameIntelligence.get else player
-      .gameIntelligence
-    val teamPlayer = if (updatePlayer.teamPlayer.isDefined) updatePlayer.teamPlayer.get else player.teamPlayer
-    val physique = if (updatePlayer.physique.isDefined) updatePlayer.physique.get else player.physique
+  private def getUpdatePlayerWithSkills(playerId: Int, updateDf: DataFrame): DataFrame = {
+    val player = getPlayerData(playerId)
+    val df = DBUtils.renameColumnsToDBFormat(updateDf, playersConstants)
+    val updateData = df.collect()(0)
+    val gameIntelligence = Option(updateData.getAs[Int](playersConstants.gameIntelligence))
+      .getOrElse(player.getAs[Int](playersConstants.gameIntelligence))
+    val teamPlayer = Option(updateData.getAs[Int](playersConstants.teamPlayer))
+      .getOrElse(player.getAs[Int](playersConstants.teamPlayer))
+    val physique = Option(updateData.getAs[Int](playersConstants.physique))
+      .getOrElse(player.getAs[Int](playersConstants.physique))
+    val age = Option(updateData.getAs[Int](playersConstants.age))
+      .getOrElse(player.getAs[Int](playersConstants.age))
     val skills = calculateSkills(gameIntelligence, teamPlayer, physique)
-    val age = if (updatePlayer.age.isDefined) updatePlayer.age.get else player.age
     val cost = calculateCost(skills, age)
-    UpdatePlayerWithSkills(updatePlayer.name, updatePlayer.teamId, updatePlayer.position, Option(cost),
-      updatePlayer.age,
-      updatePlayer.height, updatePlayer.weight, Option(skills), updatePlayer.gameIntelligence, updatePlayer.teamPlayer,
-      updatePlayer.physique)
+    df.withColumn(playersConstants.cost, functions.lit(cost)).withColumn(playersConstants.skills, functions.lit(skills))
   }
 
   def calculateSkills(game_intelligence: Int, team_player: Int, physique: Int): Int = {
@@ -110,89 +108,101 @@ object Players extends PlayerJsonSupport {
     }
   }
 
-  private def calculateGameIntelligence(gameIntelligence: Int, playerData: PlayerData): Int = {
+  private def calculateGameIntelligence(gameIntelligence: Int, summaryData: Row): Int = {
     val k: Float = (1000 - gameIntelligence).toFloat / 1000
-    val goalsPoints = if (playerData.goals > 4) 20 else playerData.goals * 5
-    val ballLossesPoints = if (playerData.ballLosses > 20) 20 else playerData.ballLosses
-    var passesPoints = 4 * playerData.assists + 2 * playerData.smartPasses
+    val goals = summaryData.getAs[Int](Tables.Summary.goals)
+    val ballLosses = summaryData.getAs[Int](Tables.Summary.ballLosses)
+    val assists = summaryData.getAs[Int](Tables.Summary.assists)
+    val smartPasses = summaryData.getAs[Int](Tables.Summary.smartPasses)
+    val dribblingCount = summaryData.getAs[Int](Tables.Summary.dribblingCount)
+    val hooks = summaryData.getAs[Int](Tables.Summary.hooks)
+    val goalsPoints = if (goals > 4) 20 else goals * 5
+    val ballLossesPoints = if (ballLosses > 20) 20 else ballLosses
+    var passesPoints = 4 * assists + 2 * smartPasses
     passesPoints = if (passesPoints > 40) 20 else passesPoints
-    val dribblingPoints = if (playerData.dribblingCount > 20) 10 else playerData.dribblingCount / 2
-    val hooksPoints = if (playerData.hooks > 20) 10 else playerData.hooks / 2
+    val dribblingPoints = if (dribblingCount > 20) 10 else dribblingCount / 2
+    val hooksPoints = if (hooks > 20) 10 else hooks / 2
     val diff = goalsPoints - ballLossesPoints + passesPoints + dribblingPoints + hooksPoints
-    if (diff > 0) {
-      (gameIntelligence + k * diff).toInt
-    } else {
-      gameIntelligence
-    }
+    if (diff > 0) (gameIntelligence + k * diff).toInt else gameIntelligence
   }
 
-  private def calculateTeamPlayer(teamPlayer: Int, playerData: PlayerData): Int = {
+  private def calculateTeamPlayer(teamPlayer: Int, summaryData: Row): Int = {
     val k: Float = (1000 - teamPlayer).toFloat / 1000
-    var passesPoints = 2 * playerData.assists + playerData.smartPasses + playerData.donePasses -
-      2 * (playerData.passes - playerData.donePasses)
+    val assists = summaryData.getAs[Int](Tables.Summary.assists)
+    val smartPasses = summaryData.getAs[Int](Tables.Summary.smartPasses)
+    val donePasses = summaryData.getAs[Int](Tables.Summary.donePasses)
+    val passes = summaryData.getAs[Int](Tables.Summary.passes)
+    val ballLosses = summaryData.getAs[Int](Tables.Summary.ballLosses)
+    val shots = summaryData.getAs[Int](Tables.Summary.shots)
+    val doneShots = summaryData.getAs[Int](Tables.Summary.doneShots)
+    val dribblingCount = summaryData.getAs[Int](Tables.Summary.dribblingCount)
+    var passesPoints = 2 * assists + smartPasses + donePasses - 2 * (passes - donePasses)
     passesPoints = if (passesPoints > 40) 40 else passesPoints
-    val ballLossesPoints = if (playerData.ballLosses > 20) 20 else playerData.ballLosses
-    var shotsPoints = playerData.shots - 2 * playerData.doneShots
+    val ballLossesPoints = if (ballLosses > 20) 20 else ballLosses
+    var shotsPoints = shots - 2 * doneShots
     shotsPoints = if (shotsPoints < 0) 0 else shotsPoints
-    val dribblingPoints = if (playerData.dribblingCount > 20) 10 else playerData.dribblingCount / 2
+    val dribblingPoints = if (dribblingCount > 20) 10 else dribblingCount / 2
     val diff = passesPoints - ballLossesPoints - shotsPoints + dribblingPoints
-    if (diff > 0) {
-      (teamPlayer + k * diff).toInt
+    if (diff > 0) (teamPlayer + k * diff).toInt else teamPlayer
+  }
+
+  private def calculatePhysique(physique: Int, summaryData: Row): Int = {
+    val k: Float = (1000 - physique).toFloat / 1000
+    val mileage = summaryData.getAs[Int](Tables.Summary.mileage)
+    val tackles = summaryData.getAs[Int](Tables.Summary.tackles)
+    val ballLosses = summaryData.getAs[Int](Tables.Summary.ballLosses)
+    val mileagePoints = if (mileage > 10000) 25 else mileage / 400
+    val tacklesPoints = if (tackles > 50) 25 else tackles / 2
+    val ballLossesPoints = if (ballLosses > 20) 20 else ballLosses
+    val diff = mileagePoints + tacklesPoints - ballLossesPoints
+    if (diff > 0) (physique + k * diff).toInt else physique
+  }
+
+  def deletePlayer(id: Int, cost: Int): Unit = {
+    if (CommonConstants.defaultPlayers.contains(id)) {
+      Players.updatePlayer(id,
+        Map(playersConstants.teamId -> Teams.getUserTeam(CommonConstants.admins.head).getAs[Int](Tables.Teams.id)))
+      Transactions.addPlayerTransaction(id, cost)
     } else {
-      teamPlayer
+      deletePlayer(id)
     }
   }
 
-  private def calculatePhysique(physique: Int, playerData: PlayerData): Int = {
-    val k: Float = (1000 - physique).toFloat / 1000
-    val mileagePoints = if (playerData.mileage > 10000) 25 else playerData.mileage / 400
-    val tacklesPoints = if (playerData.tackles > 50) 25 else playerData.tackles / 2
-    val ballLossesPoints = if (playerData.ballLosses > 20) 20 else playerData.ballLosses
-    val diff = mileagePoints + tacklesPoints - ballLossesPoints
-    if (diff > 0) {
-      (physique + k * diff).toInt
-    } else {
-      physique
-    }
+  def updatePlayer(id: Int, updateData: Map[String, Any]): Unit = {
+    DBUtils.updateDataInTable(id, updateData, playersConstants.tableName)
   }
 
   def deletePlayer(id: Int): Unit = {
     DBUtils.deleteDataFromTable(playersConstants.tableName, id)
   }
 
-  def deletePlayer(id: Int, cost: Int): Unit = {
-    if (CommonConstants.defaultPlayers.contains(id)) {
-      Players.updatePlayer(id,
-        UpdatePlayer(None, Option(Teams.getUserTeam(CommonConstants.admins.head).id), None, None, None, None, None,
-          None, None))
-      Transactions.addPlayerTransaction(PartialPlayerTransaction(id, cost))
-    } else {
-      Players.deletePlayer(id)
-    }
-  }
-
   def checkPlayer(id: Int, userId: Int): Boolean = {
     val teamsConstants = Tables.Teams
-    val player = DBUtils.getTableDataByPrimaryKey(playersConstants, id)
+    val player = getPlayerData(id)
     if (null == player) {
       false
     } else {
-      DBUtils.getTable(teamsConstants).filter(s"${teamsConstants.id} = ${player.parseJson.convertTo[Player].teamId}")
+      DBUtils.getTable(teamsConstants, rename = false)
+        .filter(s"${teamsConstants.id} = ${player.getAs[Int](playersConstants.teamId)}")
         .filter(s"${teamsConstants.owner} = $userId").count() != 0
     }
   }
 
-  def getPlayerData(id: Int): Player = {
-    val player = DBUtils.getTableDataByPrimaryKey(playersConstants, id)
-    if (null == player) {
-      null
-    } else {
-      player.parseJson.convertTo[Player]
+  def getPlayerData(id: Int): Row = {
+    DBUtils.getTableDataByPrimaryKey(playersConstants, id)
+  }
+
+  def getPlayerTeamId(id: Int): Int = {
+    try {
+      DBUtils.getTable(playersConstants, rename = false).filter(s"${Tables.primaryKey} = '$id'")
+        .select(playersConstants.teamId).collect()(0).getInt(0)
+    } catch {
+      case _: ArrayIndexOutOfBoundsException => -1
     }
   }
 
   def getTeamPlayers(teamId: Int): Array[Row] = {
-    DBUtils.getTable(playersConstants).filter(s"${playersConstants.teamId} = $teamId")
+    DBUtils.getTable(playersConstants, rename = false).filter(s"${playersConstants.teamId} = $teamId")
       .select(playersConstants.id, playersConstants.cost).collect()
   }
 

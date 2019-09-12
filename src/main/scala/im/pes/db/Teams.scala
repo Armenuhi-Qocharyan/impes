@@ -1,53 +1,49 @@
 package im.pes.db
 
-import akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport
-import im.pes.Health
+import com.github.dwickern.macros.NameOf.nameOf
 import im.pes.constants.Tables
-import im.pes.main.spark
-import im.pes.utils.DBUtils.getTable
-import im.pes.utils.{BaseTable, DBUtils}
-import spray.json._
+import im.pes.utils.DBUtils
+import org.apache.spark.sql.types.{DataTypes, StructType}
+import org.apache.spark.sql.{DataFrame, Row, functions}
 
-case class Team(id: Int, name: String, budget: Int, championship: String, championsLeague: Boolean, isUsed: Boolean,
-                standardStaff: Int, owner: Int)
 
-case class PartialTeam(name: String, budget: Int, championship: String, owner: Int)
+object Teams {
 
-case class UpdateTeam(name: Option[String], budget: Option[Int], championship: Option[String],
-                      owner: Option[Int]) extends BaseTable
-
-trait TeamJsonSupport extends SprayJsonSupport with DefaultJsonProtocol {
-  implicit val healthFormat: RootJsonFormat[Health] = jsonFormat2(Health)
-  implicit val teamFormat: RootJsonFormat[Team] = jsonFormat8(Team)
-}
-
-object Teams extends TeamJsonSupport {
-
-  private val teamsConstants = Tables.Teams
+  val teamsConstants: Tables.Teams.type = Tables.Teams
+  val addTeamSchema: StructType = (new StructType)
+    .add(nameOf(teamsConstants.name), DataTypes.StringType, nullable = false)
+    .add(nameOf(teamsConstants.budget), DataTypes.IntegerType, nullable = false)
+    .add(nameOf(teamsConstants.championship), DataTypes.StringType, nullable = false)
+    .add(nameOf(teamsConstants.owner), DataTypes.IntegerType, nullable = false)
+  val updateTeamSchema: StructType = (new StructType)
+    .add(nameOf(teamsConstants.name), DataTypes.StringType)
+    .add(nameOf(teamsConstants.budget), DataTypes.IntegerType)
+    .add(nameOf(teamsConstants.championship), DataTypes.StringType)
+    .add(nameOf(teamsConstants.owner), DataTypes.IntegerType)
 
   def getTeams(params: Map[String, String]): String = {
-    DBUtils.getTableData(teamsConstants, params)
+    DBUtils.getTableDataAsString(teamsConstants, params)
   }
 
   def getTeam(id: Int): String = {
-    DBUtils.getTableDataByPrimaryKey(teamsConstants, id)
+    DBUtils.getTableDataAsStringByPrimaryKey(teamsConstants, id)
   }
 
-  def addTeam(partialTeam: PartialTeam, userId: Int): Unit = {
-    addTeam(partialTeam.owner, partialTeam.name, partialTeam.budget, partialTeam.championship)
+  def addTeam(df: DataFrame): Unit = {
+    val id = DBUtils.getTable(teamsConstants, rename = false).count() + 1
+    DBUtils.addDataToTable(teamsConstants.tableName,
+      DBUtils.renameColumnsToDBFormat(df, teamsConstants).withColumn(teamsConstants.id, functions.lit(id))
+        .withColumn(teamsConstants.championsLeague, functions.lit(false))
+        .withColumn(teamsConstants.isUsed, functions.lit(true)))
   }
 
-  private def addTeam(userId: Int, name: String, budget: Int, championship: String): Unit = {
-    val data = spark
-      .createDataFrame(
-        Seq((DBUtils.getTable(teamsConstants).count() + 1, name, budget, championship, false, true, userId)))
-      .toDF(teamsConstants.id, teamsConstants.name, teamsConstants.budget, teamsConstants.championship,
-        teamsConstants.championsLeague, teamsConstants.isUsed, teamsConstants.owner)
-    DBUtils.addDataToTable(teamsConstants.tableName, data)
+  def updateTeam(id: Int, updateDf: DataFrame): Unit = {
+    val df = DBUtils.renameColumnsToDBFormat(updateDf, teamsConstants)
+    updateTeam(id, df.collect()(0).getValuesMap(df.columns))
   }
 
-  def updateTeam(id: Int, updateTeam: UpdateTeam): Unit = {
-    DBUtils.updateDataInTable(id, updateTeam, teamsConstants)
+  def updateTeam(id: Int, updateData: Map[String, Any]): Unit = {
+    DBUtils.updateDataInTable(id, updateData, teamsConstants.tableName)
   }
 
   def deleteTeam(id: Int): Unit = {
@@ -55,23 +51,17 @@ object Teams extends TeamJsonSupport {
   }
 
   def checkTeam(id: Int, userId: Int): Boolean = {
-    DBUtils.getTable(teamsConstants).filter(s"${teamsConstants.id} = $id")
+    DBUtils.getTable(teamsConstants, rename = false).filter(s"${teamsConstants.id} = $id")
       .filter(s"${teamsConstants.owner} = $userId").count() != 0
   }
 
-  def getTeamData(id: Int): Team = {
-    val team = DBUtils.getTableDataByPrimaryKey(teamsConstants, id)
-    if (null == team) {
-      null
-    } else {
-      team.parseJson.convertTo[Team]
-    }
+  def getTeamData(id: Int): Row = {
+    DBUtils.getTableDataByPrimaryKey(teamsConstants, id)
   }
 
-  def getUserTeam(userId: Int): Team = {
+  def getUserTeam(userId: Int): Row = {
     try {
-      getTable(teamsConstants).filter(s"${teamsConstants.owner} = $userId").toJSON.collect()(0).parseJson
-        .convertTo[Team]
+      DBUtils.getTable(teamsConstants, rename = false).filter(s"${teamsConstants.owner} = $userId").collect()(0)
     } catch {
       case _: ArrayIndexOutOfBoundsException => null
     }

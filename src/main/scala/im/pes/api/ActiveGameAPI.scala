@@ -5,23 +5,14 @@ import akka.http.scaladsl.marshalling.ToResponseMarshallable
 import akka.http.scaladsl.model.StatusCodes
 import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.server.Route
-import im.pes.Health
-import im.pes.constants.{ActivityTypes, CommonConstants, Paths, Tables}
-import im.pes.db._
+import im.pes.constants.{ActivityTypes, CommonConstants, Paths}
+import im.pes.db.ActiveGames.{activitiesConstants, addActivitySchema, addPassActivitySchema, addRunActivitySchema, addShotActivitySchema, addStayActivitySchema, addTackleActivitySchema}
+import im.pes.db.{ActiveGames, Players}
 import im.pes.utils.DBUtils
-import spray.json._
+import spray.json.DefaultJsonProtocol
 
-trait GameJsonSupport extends SprayJsonSupport with DefaultJsonProtocol {
-  implicit val healthFormat: RootJsonFormat[Health] = jsonFormat2(Health)
-  implicit val activityFormat: RootJsonFormat[Activity] = jsonFormat1(Activity)
-  implicit val runActivityFormat: RootJsonFormat[RunActivity] = jsonFormat1(RunActivity)
-  implicit val stayActivityFormat: RootJsonFormat[StayActivity] = jsonFormat2(StayActivity)
-  implicit val shotActivityFormat: RootJsonFormat[ShotActivity] = jsonFormat3(ShotActivity)
-  implicit val passActivityFormat: RootJsonFormat[PassActivity] = jsonFormat3(PassActivity)
-  implicit val tackleActivityFormat: RootJsonFormat[TackleActivity] = jsonFormat1(TackleActivity)
-}
 
-object ActiveGameAPI extends GameJsonSupport {
+object ActiveGameAPI extends SprayJsonSupport with DefaultJsonProtocol {
 
   def getRoute: Route =
     path(Paths.games / IntNumber / IntNumber) { (gameId, playerId) =>
@@ -36,7 +27,7 @@ object ActiveGameAPI extends GameJsonSupport {
       path(Paths.games / IntNumber / Paths.playersData / IntNumber) { (gameId, playerId) =>
         post {
           headerValueByName(CommonConstants.token) { token =>
-              complete(addActiveGamePlayerData(gameId, playerId, token))
+            complete(addActiveGamePlayerData(gameId, playerId, token))
           }
         }
       } ~
@@ -57,31 +48,33 @@ object ActiveGameAPI extends GameJsonSupport {
       return StatusCodes.Forbidden
     }
     if (!ActiveGames.playerDataExists(playerId)) {
-      return StatusCodes.Forbidden
+      return StatusCodes.BadRequest
     }
     try {
-      activity.parseJson.convertTo[Activity].activityType match {
-        case ActivityTypes.run => activity.parseJson.convertTo[RunActivity]
-        case ActivityTypes.stay => activity.parseJson.convertTo[StayActivity]
-        case ActivityTypes.shot => activity.parseJson.convertTo[ShotActivity]
-        case ActivityTypes.pass => activity.parseJson.convertTo[PassActivity]
-        case ActivityTypes.tackle => activity.parseJson.convertTo[TackleActivity]
-        case _ => return StatusCodes.BadRequest
-      }
-      ActiveGames.addActivity(playerId, activity)
+      val addActivity =
+        DBUtils.dataToDf(addActivitySchema, activity).collect()(0)
+          .getAs[String](activitiesConstants.activityType) match {
+          case ActivityTypes.run => DBUtils.dataToDf(addRunActivitySchema, activity)
+          case ActivityTypes.stay => DBUtils.dataToDf(addStayActivitySchema, activity)
+          case ActivityTypes.shot => DBUtils.dataToDf(addShotActivitySchema, activity)
+          case ActivityTypes.pass => DBUtils.dataToDf(addPassActivitySchema, activity)
+          case ActivityTypes.tackle => DBUtils.dataToDf(addTackleActivitySchema, activity)
+          case _ => return StatusCodes.BadRequest
+        }
+      ActiveGames.addActivity(playerId, addActivity.toJSON.collect()(0))
       StatusCodes.NoContent
     } catch {
-      case _: DeserializationException => StatusCodes.BadRequest
+      case _: NullPointerException => StatusCodes.BadRequest
     }
   }
 
   def addActiveGamePlayerData(gameId: Int, playerId: Int, token: String): ToResponseMarshallable = {
     val userId = DBUtils.getIdByToken(token)
-        if (!Players.checkPlayer(playerId, userId)) {
-          return StatusCodes.Forbidden
-        }
-    if (ActiveGames.playerDataExists(playerId)) {
+    if (!Players.checkPlayer(playerId, userId)) {
       return StatusCodes.Forbidden
+    }
+    if (ActiveGames.playerDataExists(playerId)) {
+      return StatusCodes.BadRequest
     }
     ActiveGames.addActiveGamePlayerData(playerId, gameId)
     ActiveGames.addActivity(playerId, CommonConstants.stayActivity(0, 0))
@@ -93,26 +86,10 @@ object ActiveGameAPI extends GameJsonSupport {
     if (!Players.checkPlayer(playerId, userId)) {
       return StatusCodes.Forbidden
     }
-    val summaryConstants = Tables.Summary
-    val summaryData = ActiveGames.getSummary(playerId)
-    if (null == summaryData) {
+    if (!ActiveGames.playerDataExists(playerId)) {
       return StatusCodes.BadRequest
     }
-    var data: Map[String, Any] = Map.empty
-    for (key <- summary) {
-      if (key.equals(summaryConstants.redCard)) {
-        data = data + (key -> true)
-      } else {
-        try {
-          val field = summaryData.getClass.getDeclaredField(key)
-          field.setAccessible(true)
-          data = data + (key -> (field.getInt(summaryData) + 1))
-        } catch {
-          case _:NoSuchFieldException =>
-        }
-      }
-    }
-    ActiveGames.updateSummary(playerId, data)
+    ActiveGames.updateSummary(playerId, summary)
     StatusCodes.NoContent
   }
 

@@ -5,7 +5,7 @@ import akka.http.scaladsl.model.StatusCodes
 import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.server.Route
 import im.pes.constants.Paths
-import im.pes.db._
+import im.pes.db.Statistics
 
 
 object StatisticsAPI {
@@ -41,11 +41,11 @@ object StatisticsAPI {
   }
 
   def getTeamStatistics(id: Int): ToResponseMarshallable = {
-    val teamStatistic = Statistics.getTeamStatistics(id)
-    if (null == teamStatistic) {
+    val teamStatistics = Statistics.getTeamStatistics(id)
+    if (null == teamStatistics) {
       StatusCodes.NotFound
     } else {
-      teamStatistic
+      teamStatistics
     }
   }
 
@@ -54,11 +54,11 @@ object StatisticsAPI {
   }
 
   def getPlayerStatistics(id: Int): ToResponseMarshallable = {
-    val playerStatistic = Statistics.getPlayerStatistics(id)
-    if (null == playerStatistic) {
+    val playerStatistics = Statistics.getPlayerStatistics(id)
+    if (null == playerStatistics) {
       StatusCodes.NotFound
     } else {
-      playerStatistic
+      playerStatistics
     }
   }
 

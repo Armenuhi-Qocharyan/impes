@@ -1,48 +1,50 @@
 package im.pes.db
 
+import com.github.dwickern.macros.NameOf.nameOf
 import im.pes.constants.Tables
-import im.pes.main.spark
-import im.pes.utils.{BaseTable, DBUtils}
+import im.pes.utils.DBUtils
+import org.apache.spark.sql.types.{DataTypes, StructType}
+import org.apache.spark.sql.{DataFrame, functions}
 
-case class ComingGame(id: Int, firstTeamId: Int, secondTeamId: Int, championship: String, championshipState: String,
-                      date: String)
-
-case class PartialComingGame(firstTeamId: Int, secondTeamId: Int, championship: String, championshipState: String,
-                             date: String)
-
-case class UpdateComingGame(firstTeamId: Option[Int], secondTeamId: Option[Int], championship: Option[String],
-                            championshipState: Option[String], date: Option[String]) extends BaseTable
 
 object ComingGames {
 
-  private val comingGamesConstants = Tables.ComingGames
+  val comingGamesConstants: Tables.ComingGames.type = Tables.ComingGames
+  val addComingGameSchema: StructType = (new StructType)
+    .add(nameOf(comingGamesConstants.firstTeamId), DataTypes.IntegerType, nullable = false)
+    .add(nameOf(comingGamesConstants.secondTeamId), DataTypes.IntegerType, nullable = false)
+    .add(nameOf(comingGamesConstants.championship), DataTypes.StringType, nullable = false)
+    .add(nameOf(comingGamesConstants.championshipState), DataTypes.StringType, nullable = false)
+    .add(nameOf(comingGamesConstants.date), DataTypes.StringType, nullable = false)
+  val updateComingGameSchema: StructType = (new StructType)
+    .add(nameOf(comingGamesConstants.firstTeamId), DataTypes.IntegerType)
+    .add(nameOf(comingGamesConstants.secondTeamId), DataTypes.IntegerType)
+    .add(nameOf(comingGamesConstants.championship), DataTypes.StringType)
+    .add(nameOf(comingGamesConstants.championshipState), DataTypes.StringType)
+    .add(nameOf(comingGamesConstants.date), DataTypes.StringType)
+
 
   def getComingGames(params: Map[String, String]): String = {
-    DBUtils.getTableData(comingGamesConstants, params)
+    DBUtils.getTableDataAsString(comingGamesConstants, params)
   }
 
   def getComingGame(id: Int): String = {
-    DBUtils.getTableDataByPrimaryKey(comingGamesConstants, id)
+    DBUtils.getTableDataAsStringByPrimaryKey(comingGamesConstants, id)
   }
 
-  def addComingGame(partialComingGame: PartialComingGame): Unit = {
-    addComingGame(partialComingGame.firstTeamId, partialComingGame.secondTeamId, partialComingGame.championship,
-      partialComingGame.championshipState, partialComingGame.date)
-
+  def addComingGame(df: DataFrame): Unit = {
+    val id = DBUtils.getTable(comingGamesConstants, rename = false).count() + 1
+    DBUtils.addDataToTable(comingGamesConstants.tableName,
+      DBUtils.renameColumnsToDBFormat(df, comingGamesConstants).withColumn(comingGamesConstants.id, functions.lit(id)))
   }
 
-  private def addComingGame(firstTeamId: Int, secondTeamId: Int, championship: String, championshipState: String,
-                            date: String): Unit = {
-    val data = spark
-      .createDataFrame(Seq((DBUtils.getTable(comingGamesConstants).count() +
-        1, firstTeamId, secondTeamId, championship, championshipState, date)))
-      .toDF(comingGamesConstants.id, comingGamesConstants.firstTeamId, comingGamesConstants.secondTeamId,
-        comingGamesConstants.championship, comingGamesConstants.championshipState, comingGamesConstants.date)
-    DBUtils.addDataToTable(comingGamesConstants.tableName, data)
+  def updateComingGame(id: Int, updateDf: DataFrame): Unit = {
+    val df = DBUtils.renameColumnsToDBFormat(updateDf, comingGamesConstants)
+    updateComingGame(id, df.collect()(0).getValuesMap(df.columns))
   }
 
-  def updateComingGame(id: Int, updateComingGame: UpdateComingGame): Unit = {
-    DBUtils.updateDataInTable(id, updateComingGame, comingGamesConstants)
+  def updateComingGame(id: Int, updateData: Map[String, Any]): Unit = {
+    DBUtils.updateDataInTable(id, updateData, comingGamesConstants.tableName)
   }
 
   def deleteComingGame(id: Int): Unit = {

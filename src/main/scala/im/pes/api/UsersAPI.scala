@@ -1,23 +1,15 @@
 package im.pes.api
 
-import akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport
 import akka.http.scaladsl.marshalling.ToResponseMarshallable
 import akka.http.scaladsl.model.StatusCodes
 import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.server.Route
-import im.pes.Health
 import im.pes.constants.{CommonConstants, Paths}
-import im.pes.db.{PartialUser, UpdateUser, Users}
+import im.pes.db.Users
+import im.pes.db.Users.{addUserSchema, updateUserSchema}
 import im.pes.utils.DBUtils
-import spray.json.{DefaultJsonProtocol, RootJsonFormat}
 
-trait UserJsonSupport extends SprayJsonSupport with DefaultJsonProtocol {
-  implicit val healthFormat: RootJsonFormat[Health] = jsonFormat2(Health)
-  implicit val partialUserFormat: RootJsonFormat[PartialUser] = jsonFormat4(PartialUser)
-  implicit val updateUserFormat: RootJsonFormat[UpdateUser] = jsonFormat5(UpdateUser)
-}
-
-object UsersAPI extends UserJsonSupport {
+object UsersAPI {
 
   def getRoute: Route =
     path(Paths.users) {
@@ -27,7 +19,7 @@ object UsersAPI extends UserJsonSupport {
         }
       } ~
         post {
-          entity(as[PartialUser]) { user =>
+          entity(as[String]) { user =>
             complete(addUser(user))
           }
         }
@@ -38,7 +30,7 @@ object UsersAPI extends UserJsonSupport {
         } ~
           put {
             headerValueByName(CommonConstants.token) { token =>
-              entity(as[UpdateUser]) { user =>
+              entity(as[String]) { user =>
                 complete(updateUser(id, user, token))
               }
             }
@@ -63,24 +55,31 @@ object UsersAPI extends UserJsonSupport {
     }
   }
 
-  def addUser(partialUser: PartialUser): ToResponseMarshallable = {
+  def addUser(user: String): ToResponseMarshallable = {
+    val userDf =
+    try {
+      DBUtils.dataToDf(addUserSchema, user)
+    } catch {
+      case _: NullPointerException => return StatusCodes.BadRequest
+    }
     //TODO check fields values
-    Users.addUser(partialUser)
+    Users.addUser(userDf)
     StatusCodes.OK
   }
 
-  def updateUser(id: Int, updateUser: UpdateUser, token: String): ToResponseMarshallable = {
+  def updateUser(id: Int, updateUser: String, token: String): ToResponseMarshallable = {
     val userId = DBUtils.getIdByToken(token)
+    val updateUserDf = DBUtils.dataToDf(updateUserSchema, updateUser)
     if (DBUtils.isAdmin(userId)) {
       //TODO check fields values
-      Users.updateUser(id, updateUser)
-      return StatusCodes.NoContent
+        Users.updateUser(id, updateUserDf)
+        return StatusCodes.NoContent
     }
     if (userId == id) {
       //TODO check what user may update
       //TODO check fields values
-      Users.updateUser(id, updateUser)
-      StatusCodes.NoContent
+        Users.updateUser(id, updateUserDf)
+        StatusCodes.NoContent
     } else {
       StatusCodes.Forbidden
     }

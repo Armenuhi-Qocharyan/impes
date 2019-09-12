@@ -1,82 +1,91 @@
 package im.pes.db
 
-import akka.http.scaladsl.marshallers.sprayjson.SprayJsonSupport
-import im.pes.Health
+import com.github.dwickern.macros.NameOf.nameOf
 import im.pes.constants.{CommonConstants, Tables}
-import im.pes.main.{spark, stmt}
+import im.pes.main.spark.implicits._
+import im.pes.main.stmt
 import im.pes.utils.DBUtils
-import spray.json._
+import org.apache.spark.sql.types.{ArrayType, DataTypes, StructType}
+import org.apache.spark.sql.{DataFrame, Row, functions}
 
+object ActiveGames {
 
-case class TeamPlayer(playerId: Int, playerState: String)
+  val activitiesConstants: Tables.Activities.type = Tables.Activities
+  val activeGamesConstants: Tables.ActiveGames.type = Tables.ActiveGames
+  val activeGamesPlayersDataConstants: Tables.ActiveGamesPlayersData.type = Tables.ActiveGamesPlayersData
+  val summaryConstants: Tables.Summary.type = Tables.Summary
+  val addActiveGameConstants: Tables.AddActiveGameData.type = Tables.AddActiveGameData
 
-case class ActiveGame(id: Int, firstTeamId: Int, secondTeamId: Int, firstTeamPlayers: List[TeamPlayer],
-                      secondTeamPlayers: List[TeamPlayer], championship: String, championshipState: String)
+  val addActivitySchema: StructType = (new StructType)
+    .add(nameOf(activitiesConstants.activityType), DataTypes.StringType, nullable = false)
+  val addRunActivitySchema: StructType = addActivitySchema
+    .add(nameOf(activitiesConstants.angle), DataTypes.IntegerType, nullable = false)
+  val addStayActivitySchema: StructType = addActivitySchema
+    .add(nameOf(activitiesConstants.x), DataTypes.IntegerType, nullable = false)
+    .add(nameOf(activitiesConstants.y), DataTypes.IntegerType, nullable = false)
+  val addShotActivitySchema: StructType = addActivitySchema
+    .add(nameOf(activitiesConstants.firstAngle), DataTypes.IntegerType, nullable = false)
+    .add(nameOf(activitiesConstants.secondAngle), DataTypes.IntegerType, nullable = false)
+    .add(nameOf(activitiesConstants.power), DataTypes.IntegerType, nullable = false)
+  val addPassActivitySchema: StructType = addActivitySchema
+    .add(nameOf(activitiesConstants.firstAngle), DataTypes.IntegerType, nullable = false)
+    .add(nameOf(activitiesConstants.secondAngle), DataTypes.IntegerType, nullable = false)
+    .add(nameOf(activitiesConstants.power), DataTypes.IntegerType, nullable = false)
+  val addTackleActivitySchema: StructType = addActivitySchema
+    .add(nameOf(activitiesConstants.angle), DataTypes.IntegerType, nullable = false)
 
-case class PartialActiveGame(firstTeamId: Int, secondTeamId: Int, firstTeamPlayers: List[TeamPlayer],
-                             secondTeamPlayers: List[TeamPlayer], championship: String, championshipState: String)
+  val teamPlayerSchema: StructType = (new StructType)
+    .add(nameOf(addActiveGameConstants.playerId), DataTypes.IntegerType, nullable = false)
+    .add(nameOf(addActiveGameConstants.playerState), DataTypes.StringType, nullable = false)
 
-case class ActiveGamePlayerData(id: Int, gameId: Int, playerId: Int, summary: String, activities: String)
+  val addActiveGameSchema: StructType = (new StructType)
+    .add(nameOf(addActiveGameConstants.firstTeamId), DataTypes.IntegerType, nullable = false)
+    .add(nameOf(addActiveGameConstants.secondTeamId), DataTypes.IntegerType, nullable = false)
+    .add(nameOf(addActiveGameConstants.firstTeamPlayers), new ArrayType(teamPlayerSchema, containsNull = false),
+      nullable = false)
+    .add(nameOf(addActiveGameConstants.secondTeamPlayers), new ArrayType(teamPlayerSchema, containsNull = false),
+      nullable = false)
+    .add(nameOf(addActiveGameConstants.championship), DataTypes.StringType, nullable = false)
+    .add(nameOf(addActiveGameConstants.championshipState), DataTypes.StringType, nullable = false)
 
-case class Summary(goals: Int, donePasses: Int, smartPasses: Int, passes: Int, doneShots: Int, shots: Int,
-                   doneTackles: Int, tackles: Int, dribblingCount: Int, hooks: Int, ballLosses: Int, aerialsWon: Int,
-                   assists: Int, falls: Int, mileage: Int, yellowCards: Int, redCard: Boolean)
+  val summarySchema: StructType = (new StructType)
+    .add(summaryConstants.goals, DataTypes.IntegerType, nullable = false)
+    .add(summaryConstants.donePasses, DataTypes.IntegerType, nullable = false)
+    .add(summaryConstants.smartPasses, DataTypes.IntegerType, nullable = false)
+    .add(summaryConstants.passes, DataTypes.IntegerType, nullable = false)
+    .add(summaryConstants.doneShots, DataTypes.IntegerType, nullable = false)
+    .add(summaryConstants.shots, DataTypes.IntegerType, nullable = false)
+    .add(summaryConstants.doneTackles, DataTypes.IntegerType, nullable = false)
+    .add(summaryConstants.tackles, DataTypes.IntegerType, nullable = false)
+    .add(summaryConstants.dribblingCount, DataTypes.IntegerType, nullable = false)
+    .add(summaryConstants.hooks, DataTypes.IntegerType, nullable = false)
+    .add(summaryConstants.ballLosses, DataTypes.IntegerType, nullable = false)
+    .add(summaryConstants.aerialsWon, DataTypes.IntegerType, nullable = false)
+    .add(summaryConstants.assists, DataTypes.IntegerType, nullable = false)
+    .add(summaryConstants.falls, DataTypes.IntegerType, nullable = false)
+    .add(summaryConstants.mileage, DataTypes.IntegerType, nullable = false)
+    .add(summaryConstants.yellowCards, DataTypes.IntegerType, nullable = false)
+    .add(summaryConstants.redCard, DataTypes.BooleanType, nullable = false)
 
-case class Activity(activityType: String)
-
-case class RunActivity(angle: Int)
-
-case class StayActivity(x: Int, y: Int)
-
-case class ShotActivity(firstAngle: Int, secondAngle: Int, power: Int)
-
-case class PassActivity(firstAngle: Int, secondAngle: Int, power: Int)
-
-case class TackleActivity(angle: Int)
-
-trait PlayerDataJsonSupport extends SprayJsonSupport with DefaultJsonProtocol {
-  implicit val healthFormat: RootJsonFormat[Health] = jsonFormat2(Health)
-  implicit val summaryFormat: RootJsonFormat[Summary] = jsonFormat17(Summary)
-  implicit val playerDataFormat: RootJsonFormat[ActiveGamePlayerData] = jsonFormat5(ActiveGamePlayerData)
-
-}
-
-object ActiveGames extends PlayerDataJsonSupport {
-
-  private val activeGamesConstants = Tables.ActiveGames
-  private val activeGamesPlayersDataConstants = Tables.ActiveGamesPlayersData
-  private val activitiesConstants = Tables.Activities
-  private val summaryConstants = Tables.Summary
 
   def getActiveGames(params: Map[String, String]): String = {
-    DBUtils.getTableData(activeGamesConstants, params)
+    DBUtils.getTableDataAsString(activeGamesConstants, params)
   }
 
   def getActiveGame(id: Int): String = {
-    DBUtils.getTableDataByPrimaryKey(activeGamesConstants, id)
+    DBUtils.getTableDataAsStringByPrimaryKey(activeGamesConstants, id)
   }
 
-  def addActiveGame(partialActiveGame: PartialActiveGame): Int = {
-    addActiveGame(partialActiveGame.firstTeamId, partialActiveGame.secondTeamId, partialActiveGame.championship,
-      partialActiveGame.championshipState)
-  }
-
-  private def addActiveGame(firstTeamId: Int, secondTeamId: Int, championship: String,
-                            championshipState: String): Int = {
-    val id = DBUtils.getTable(activeGamesConstants).count() +  1
-    val data = spark
-      .createDataFrame(Seq((id, firstTeamId, secondTeamId, championship, championshipState)))
-      .toDF(activeGamesConstants.id, activeGamesConstants.firstTeamId, activeGamesConstants.secondTeamId,
-        activeGamesConstants.championship, activeGamesConstants.championshipState)
-    DBUtils.addDataToTable(activeGamesConstants.tableName, data)
+  def addActiveGame(df: DataFrame): Int = {
+    val id = DBUtils.getTable(activeGamesConstants, rename = false).count() + 1
+    DBUtils.addDataToTable(activeGamesConstants.tableName,
+      DBUtils.renameColumnsToDBFormat(df, activeGamesConstants).withColumn(activeGamesConstants.id, functions.lit(id)))
     id.toInt
   }
 
   def addActiveGamePlayerData(gameId: Int, playerId: Int): Unit = {
-    val data = spark
-      .createDataFrame(Seq(
-        (DBUtils.getTable(activeGamesPlayersDataConstants).count() + 1, gameId, playerId, CommonConstants
-          .defaultSummaryJson, "[]")))
+    val id = DBUtils.getTable(activeGamesPlayersDataConstants, rename = false).count() + 1
+    val data = Seq((id, gameId, playerId, CommonConstants.defaultSummaryJson, "[]"))
       .toDF(activeGamesPlayersDataConstants.id, activeGamesPlayersDataConstants.gameId,
         activeGamesPlayersDataConstants.playerId, activeGamesPlayersDataConstants.summary,
         activeGamesPlayersDataConstants.activities)
@@ -87,41 +96,51 @@ object ActiveGames extends PlayerDataJsonSupport {
     DBUtils.deleteDataFromTable(activeGamesConstants.tableName, id)
   }
 
+  def deleteActiveGamePlayersData(gameId: Int): Unit = {
+    DBUtils
+      .deleteDataFromTable(activeGamesPlayersDataConstants.tableName, activeGamesPlayersDataConstants.gameId, gameId)
+  }
+
   def addActivity(playerId: Int, activity: String): Unit = {
-    println(CommonConstants.sqlUpdateAppendToJsonArrayQuery(activeGamesPlayersDataConstants.tableName,
-      activeGamesPlayersDataConstants.activities, activity, activeGamesPlayersDataConstants.playerId, playerId))
     stmt.executeUpdate(CommonConstants.sqlUpdateAppendToJsonArrayQuery(activeGamesPlayersDataConstants.tableName,
       activeGamesPlayersDataConstants.activities, activity, activeGamesPlayersDataConstants.playerId, playerId))
   }
 
-  def updateSummary(playerId: Int, data: Map[String, Any]): Unit = {
+  def updateSummary(playerId: Int, data: List[String]): Unit = {
     val builder = StringBuilder.newBuilder
-    for (keyValue <- data) {
-      builder.append(", '$.").append(keyValue._1).append("', ").append(keyValue._2)
+    for (key <- data) {
+      try {
+        summaryConstants.getClass.getDeclaredField(key)
+        builder.append(", '$.").append(key).append("', ")
+        if (key.equals(summaryConstants.redCard)) {
+          builder.append(true)
+        } else {
+          builder.append(CommonConstants.jsonExtractFormat(activeGamesPlayersDataConstants.summary, key)).append(" + 1")
+        }
+      } catch {
+        case _: NoSuchFieldException =>
+      }
     }
     stmt.executeUpdate(CommonConstants.sqlUpdateReplaceJsonQuery(activeGamesPlayersDataConstants.tableName,
       activeGamesPlayersDataConstants.summary, builder.toString(), activeGamesPlayersDataConstants.playerId, playerId))
   }
 
-  def getSummary(playerId: Int): Summary = {
-    val playerData = try {
-      DBUtils.getTable(activeGamesPlayersDataConstants)
-        .filter(s"${activeGamesPlayersDataConstants.playerId} = $playerId").toJSON.collect()(0)
-    } catch {
-      case _: ArrayIndexOutOfBoundsException => null
-    }
-    playerData.parseJson.convertTo[ActiveGamePlayerData].
-      summary.parseJson.convertTo[Summary]
+  def getGameData(id: Int): Row = {
+    DBUtils.getTableDataByPrimaryKey(activeGamesConstants, id)
+  }
+
+  def getGameDF(id: Int): DataFrame = {
+    DBUtils.getTableDfByPrimaryKey(activeGamesConstants, id)
+  }
+
+  def getGamePlayers(gameId: Int): Array[Row] = {
+    DBUtils.renameColumns(DBUtils.getTable(activeGamesPlayersDataConstants, rename = false)
+      .filter(s"${activeGamesPlayersDataConstants.gameId} = $gameId"), activeGamesPlayersDataConstants).collect()
   }
 
   def playerDataExists(playerId: Int): Boolean = {
-    try {
-      DBUtils.getTable(activeGamesPlayersDataConstants)
-        .filter(s"${activeGamesPlayersDataConstants.playerId} = $playerId").toJSON.collect()(0)
-      true
-    } catch {
-      case _: ArrayIndexOutOfBoundsException => false
-    }
+    DBUtils.getTable(activeGamesPlayersDataConstants, rename = false)
+      .filter(s"${activeGamesPlayersDataConstants.playerId} = $playerId").count() != 0
   }
 
 }

@@ -198,4 +198,15 @@ object Tables {
     val redCard = "redCard"
   }
 
+  case object AddActiveGameData {
+    val firstTeamId = "firstTeamId"
+    val secondTeamId = "secondTeamId"
+    val firstTeamPlayers = "firstTeamPlayers"
+    val secondTeamPlayers = "secondTeamPlayers"
+    val championship = "championship"
+    val championshipState = "championshipState"
+    val playerId = "playerId"
+    val playerState = "playerState"
+  }
+
 }
