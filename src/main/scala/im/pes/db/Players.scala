@@ -90,8 +90,8 @@ object Players {
     df.withColumn(playersConstants.cost, functions.lit(cost)).withColumn(playersConstants.skills, functions.lit(skills))
   }
 
-  def calculateSkills(game_intelligence: Int, team_player: Int, physique: Int): Int = {
-    ((CommonConstants.kGameIntelligence * game_intelligence + CommonConstants.kTeamPlayer * team_player +
+  def calculateSkills(gameIntelligence: Int, teamPlayer: Int, physique: Int): Int = {
+    ((CommonConstants.kGameIntelligence * gameIntelligence + CommonConstants.kTeamPlayer * teamPlayer +
       CommonConstants.kPhysique * physique) /
       (CommonConstants.kGameIntelligence + CommonConstants.kTeamPlayer + CommonConstants.kPhysique)).toInt
   }
@@ -118,8 +118,10 @@ object Players {
     val hooks = summaryData.getAs[Int](Tables.Summary.hooks)
     val goalsPoints = if (goals > 4) 20 else goals * 5
     val ballLossesPoints = if (ballLosses > 20) 20 else ballLosses
-    var passesPoints = 4 * assists + 2 * smartPasses
-    passesPoints = if (passesPoints > 40) 20 else passesPoints
+    val passesPoints = {
+      val passesPoints = 4 * assists + 2 * smartPasses
+      if (passesPoints > 40) 20 else passesPoints / 2
+    }
     val dribblingPoints = if (dribblingCount > 20) 10 else dribblingCount / 2
     val hooksPoints = if (hooks > 20) 10 else hooks / 2
     val diff = goalsPoints - ballLossesPoints + passesPoints + dribblingPoints + hooksPoints
@@ -136,11 +138,15 @@ object Players {
     val shots = summaryData.getAs[Int](Tables.Summary.shots)
     val doneShots = summaryData.getAs[Int](Tables.Summary.doneShots)
     val dribblingCount = summaryData.getAs[Int](Tables.Summary.dribblingCount)
-    var passesPoints = 2 * assists + smartPasses + donePasses - 2 * (passes - donePasses)
-    passesPoints = if (passesPoints > 40) 40 else passesPoints
+    val passesPoints = {
+      val passesPoints = 2 * assists + smartPasses + donePasses - 2 * (passes - donePasses)
+      if (passesPoints > 40) 40 else passesPoints
+    }
     val ballLossesPoints = if (ballLosses > 20) 20 else ballLosses
-    var shotsPoints = shots - 2 * doneShots
-    shotsPoints = if (shotsPoints < 0) 0 else shotsPoints
+    val shotsPoints = {
+      val shotsPoints = shots - 2 * doneShots
+      if (shotsPoints < 0) 0 else shotsPoints
+    }
     val dribblingPoints = if (dribblingCount > 20) 10 else dribblingCount / 2
     val diff = passesPoints - ballLossesPoints - shotsPoints + dribblingPoints
     if (diff > 0) (teamPlayer + k * diff).toInt else teamPlayer
@@ -182,9 +188,9 @@ object Players {
     if (null == player) {
       false
     } else {
-      DBUtils.getTable(teamsConstants, rename = false)
+      !DBUtils.getTable(teamsConstants, rename = false)
         .filter(s"${teamsConstants.id} = ${player.getAs[Int](playersConstants.teamId)}")
-        .filter(s"${teamsConstants.owner} = $userId").count() != 0
+        .filter(s"${teamsConstants.owner} = $userId").isEmpty
     }
   }
 
@@ -193,12 +199,8 @@ object Players {
   }
 
   def getPlayerTeamId(id: Int): Int = {
-    try {
-      DBUtils.getTable(playersConstants, rename = false).filter(s"${Tables.primaryKey} = '$id'")
-        .select(playersConstants.teamId).collect()(0).getInt(0)
-    } catch {
-      case _: ArrayIndexOutOfBoundsException => -1
-    }
+    val playerData = DBUtils.getTableDataByPrimaryKey(playersConstants, id, playersConstants.teamId)
+    if (null == playerData) -1 else playerData.getInt(0)
   }
 
   def getTeamPlayers(teamId: Int): Array[Row] = {

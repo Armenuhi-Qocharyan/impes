@@ -30,13 +30,9 @@ object LoginAPI {
     } catch {
       case _: NullPointerException => return StatusCodes.BadRequest
     }
-    val userData = try {
-      DBUtils.getTable(Tables.Users, rename = false)
-        .filter(s"${Tables.Users.email} = '${loginData.getAs[String](Tables.Users.email)}'").collect()(0)
-    }
-    catch {
-      case _: ArrayIndexOutOfBoundsException => return StatusCodes.NotFound
-    }
+    val userDf = DBUtils.getTable(Tables.Users, rename = false)
+      .filter(s"${Tables.Users.email} = '${loginData.getAs[String](Tables.Users.email)}'")
+    val userData = if (userDf.isEmpty) return StatusCodes.NotFound else userDf.collect()(0)
     if (BCrypt.checkpw(loginData.getAs[String](Tables.Users.password), userData.getAs[String](Tables.Users.password))) {
       val token = randomUUID.toString
       Sessions.addSession(userData.getAs[Int](Tables.Users.id), token)

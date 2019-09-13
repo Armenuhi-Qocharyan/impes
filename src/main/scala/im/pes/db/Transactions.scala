@@ -70,13 +70,13 @@ object Transactions {
   }
 
   def checkTeamTransaction(teamId: Int): Boolean = {
-    DBUtils.getTable(teamsTransactionsConstants, rename = false)
-      .filter(s"${teamsTransactionsConstants.teamId} = $teamId").count() != 0
+    !DBUtils.getTable(teamsTransactionsConstants, rename = false)
+      .filter(s"${teamsTransactionsConstants.teamId} = $teamId").isEmpty
   }
 
   def checkPlayerTransaction(playerId: Int): Boolean = {
-    DBUtils.getTable(playersTransactionsConstants, rename = false)
-      .filter(s"${playersTransactionsConstants.playerId} = $playerId").count() != 0
+    !DBUtils.getTable(playersTransactionsConstants, rename = false)
+      .filter(s"${playersTransactionsConstants.playerId} = $playerId").isEmpty
   }
 
 

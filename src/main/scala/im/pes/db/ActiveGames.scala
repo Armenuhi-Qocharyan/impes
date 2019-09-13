@@ -1,7 +1,7 @@
 package im.pes.db
 
 import com.github.dwickern.macros.NameOf.nameOf
-import im.pes.constants.{CommonConstants, Tables}
+import im.pes.constants.{ActivityTypes, CommonConstants, Tables}
 import im.pes.main.spark.implicits._
 import im.pes.main.stmt
 import im.pes.utils.DBUtils
@@ -76,6 +76,19 @@ object ActiveGames {
     DBUtils.getTableDataAsStringByPrimaryKey(activeGamesConstants, id)
   }
 
+  def getActiveGamePlayersData(gmeId: Int): String = {
+    DBUtils.getTableDataAsString(activeGamesPlayersDataConstants,
+      Map(activeGamesPlayersDataConstants.gameId -> gmeId.toString),
+      Seq(activeGamesPlayersDataConstants.id, activeGamesPlayersDataConstants.gameId))
+  }
+
+  def getActiveGamePlayersActivities(gameId: Int, activityId: Int): String = {
+    val df = DBUtils.getTable(activitiesConstants, rename = false)
+      .filter(s"${activitiesConstants.gameId} = $gameId")
+      .filter(s"${activitiesConstants.id} > $activityId")
+    DBUtils.dataToJsonFormat(DBUtils.renameColumns(df.drop(activitiesConstants.gameId), activitiesConstants))
+  }
+
   def addActiveGame(df: DataFrame): Int = {
     val id = DBUtils.getTable(activeGamesConstants, rename = false).count() + 1
     DBUtils.addDataToTable(activeGamesConstants.tableName,
@@ -85,25 +98,32 @@ object ActiveGames {
 
   def addActiveGamePlayerData(gameId: Int, playerId: Int): Unit = {
     val id = DBUtils.getTable(activeGamesPlayersDataConstants, rename = false).count() + 1
-    val data = Seq((id, gameId, playerId, CommonConstants.defaultSummaryJson, "[]"))
+    val data = Seq((id, gameId, playerId, CommonConstants.defaultSummaryJson))
       .toDF(activeGamesPlayersDataConstants.id, activeGamesPlayersDataConstants.gameId,
-        activeGamesPlayersDataConstants.playerId, activeGamesPlayersDataConstants.summary,
-        activeGamesPlayersDataConstants.activities)
+        activeGamesPlayersDataConstants.playerId, activeGamesPlayersDataConstants.summary)
     DBUtils.addDataToTable(activeGamesPlayersDataConstants.tableName, data)
   }
 
   def deleteActiveGame(id: Int): Unit = {
     DBUtils.deleteDataFromTable(activeGamesConstants.tableName, id)
+    DBUtils.deleteDataFromTable(activeGamesPlayersDataConstants.tableName, activeGamesPlayersDataConstants.gameId, id)
+    DBUtils.deleteDataFromTable(activitiesConstants.tableName, activitiesConstants.gameId, id)
   }
 
-  def deleteActiveGamePlayersData(gameId: Int): Unit = {
-    DBUtils
-      .deleteDataFromTable(activeGamesPlayersDataConstants.tableName, activeGamesPlayersDataConstants.gameId, gameId)
+  def addStayActivity(gameId: Int, playerId: Int, x: Int, y: Int): Unit = {
+    val df = Seq((ActivityTypes.stay, x, y)).toDF(activitiesConstants.activityType, activitiesConstants.x,
+      activitiesConstants.y)
+    addActivity(gameId, playerId, df)
   }
 
-  def addActivity(playerId: Int, activity: String): Unit = {
-    stmt.executeUpdate(CommonConstants.sqlUpdateAppendToJsonArrayQuery(activeGamesPlayersDataConstants.tableName,
-      activeGamesPlayersDataConstants.activities, activity, activeGamesPlayersDataConstants.playerId, playerId))
+  def addActivity(gameId: Int, playerId: Int, activityDf: DataFrame): Unit = {
+    val id = DBUtils.getTable(activitiesConstants, rename = false).count() + 1
+    DBUtils.addDataToTable(activitiesConstants.tableName,
+      DBUtils.renameColumnsToDBFormat(
+        activityDf.withColumn(activitiesConstants.timestamp, functions.lit(System.currentTimeMillis()))
+        .withColumn(activitiesConstants.gameId, functions.lit(gameId))
+          .withColumn(activitiesConstants.playerId, functions.lit(playerId)),
+        activitiesConstants).withColumn(activitiesConstants.id, functions.lit(id)))
   }
 
   def updateSummary(playerId: Int, data: List[String]): Unit = {
@@ -139,8 +159,8 @@ object ActiveGames {
   }
 
   def playerDataExists(playerId: Int): Boolean = {
-    DBUtils.getTable(activeGamesPlayersDataConstants, rename = false)
-      .filter(s"${activeGamesPlayersDataConstants.playerId} = $playerId").count() != 0
+    !DBUtils.getTable(activeGamesPlayersDataConstants, rename = false)
+      .filter(s"${activeGamesPlayersDataConstants.playerId} = $playerId").isEmpty
   }
 
 }

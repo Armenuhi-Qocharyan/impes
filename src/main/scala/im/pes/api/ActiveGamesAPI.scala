@@ -5,13 +5,12 @@ import akka.http.scaladsl.model.StatusCodes
 import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.server.Route
 import com.github.dwickern.macros.NameOf.nameOf
-import im.pes.constants.{CommonConstants, Paths, Tables}
-import im.pes.db.{ActiveGames, DoneGames, Players, Statistics}
+import im.pes.constants.{Paths, Tables}
 import im.pes.db.ActiveGames.{activeGamesConstants, addActiveGameConstants, addActiveGameSchema, summarySchema}
+import im.pes.db.{ActiveGames, DoneGames, Players, Statistics}
 import im.pes.utils.DBUtils
 import org.apache.spark.sql.Row
 
-import scala.collection.mutable
 
 object ActiveGamesAPI {
 
@@ -42,7 +41,6 @@ object ActiveGamesAPI {
   }
 
   def getGame(id: Int): ToResponseMarshallable = {
-    ActiveGames.getActiveGame(id)
     val game = ActiveGames.getActiveGame(id)
     if (null == game) {
       StatusCodes.NotFound
@@ -62,13 +60,13 @@ object ActiveGamesAPI {
       addGameDf.drop(nameOf(addActiveGameConstants.firstTeamPlayers), nameOf(addActiveGameConstants.secondTeamPlayers)))
     val addGameData = addGameDf.collect()(0)
     addTeamPlayers(gameId,
-      addGameData.getAs[mutable.WrappedArray[Row]](nameOf(addActiveGameConstants.firstTeamPlayers)))
+      addGameData.getAs[Seq[Row]](nameOf(addActiveGameConstants.firstTeamPlayers)))
     addTeamPlayers(gameId,
-      addGameData.getAs[mutable.WrappedArray[Row]](nameOf(addActiveGameConstants.secondTeamPlayers)))
+      addGameData.getAs[Seq[Row]](nameOf(addActiveGameConstants.secondTeamPlayers)))
     StatusCodes.OK
   }
 
-  def addTeamPlayers(gameId: Int, teamPlayers: mutable.WrappedArray[Row]): Unit = {
+  def addTeamPlayers(gameId: Int, teamPlayers: Seq[Row]): Unit = {
     for (teamPlayer <- teamPlayers) {
       //TODO check player in team
       if (teamPlayer.getAs[String](addActiveGameConstants.playerState).equals("reserve")) {
@@ -77,24 +75,22 @@ object ActiveGamesAPI {
         val playerId = teamPlayer.getAs[Int](addActiveGameConstants.playerId)
         ActiveGames.addActiveGamePlayerData(gameId, playerId)
         //TODO get x and y according to the player state
-        ActiveGames.addActivity(playerId, CommonConstants.stayActivity(0, 0))
+        ActiveGames.addStayActivity(gameId, playerId, 0, 0)
       }
     }
   }
 
   def deleteGame(id: Int): ToResponseMarshallable = {
-    val firstTeamData = mutable.Map(Tables.TeamsStatistics.goals -> 0, Tables.TeamsStatistics.possession -> 0,
+    val firstTeamData = scala.collection.mutable
+      .Map(Tables.TeamsStatistics.goals -> 0, Tables.TeamsStatistics.possession -> 0,
         Tables.TeamsStatistics.yellowCards -> 0, Tables.TeamsStatistics.redCards -> 0,
         Tables.TeamsStatistics.falls -> 0, Tables.TeamsStatistics.shots -> 0, Tables.TeamsStatistics.aerialsWon -> 0)
-    val secondTeamData = mutable.Map(Tables.TeamsStatistics.goals -> 0, Tables.TeamsStatistics.possession -> 0,
+    val secondTeamData = scala.collection.mutable
+      .Map(Tables.TeamsStatistics.goals -> 0, Tables.TeamsStatistics.possession -> 0,
         Tables.TeamsStatistics.yellowCards -> 0, Tables.TeamsStatistics.redCards -> 0,
         Tables.TeamsStatistics.falls -> 0, Tables.TeamsStatistics.shots -> 0, Tables.TeamsStatistics.aerialsWon -> 0)
     val activeGameDf = ActiveGames.getGameDF(id)
-    val activeGame = try {
-      activeGameDf.collect()(0)
-    } catch {
-      case _: ArrayIndexOutOfBoundsException => return StatusCodes.BadRequest
-    }
+    val activeGame = if (activeGameDf.isEmpty) return StatusCodes.BadRequest else activeGameDf.collect()(0)
     val firstTeamId = activeGame.getAs[Int](activeGamesConstants.firstTeamId)
     val secondTeamId = activeGame.getAs[Int](activeGamesConstants.secondTeamId)
     val doneGameId = DoneGames.addDoneGame(activeGameDf)
@@ -109,7 +105,6 @@ object ActiveGamesAPI {
         summaryData)
     }
     ActiveGames.deleteActiveGame(id)
-    ActiveGames.deleteActiveGamePlayersData(id)
     DoneGames.updateDoneGame(doneGameId,
       Map(Tables.DoneGames.firstTeamGoals -> firstTeamData(Tables.TeamsStatistics.goals),
         Tables.DoneGames.secondTeamGoals -> secondTeamData(Tables.TeamsStatistics.goals)))
@@ -118,7 +113,7 @@ object ActiveGamesAPI {
     StatusCodes.OK
   }
 
-  def collectTeamData(teamData: mutable.Map[String, Int], playerSummary: Row): Unit = {
+  def collectTeamData(teamData: scala.collection.mutable.Map[String, Int], playerSummary: Row): Unit = {
     teamData(Tables.TeamsStatistics.goals) += playerSummary.getAs[Int](Tables.Summary.goals)
     //TODO calculate possession
     teamData(Tables.TeamsStatistics.yellowCards) += playerSummary.getAs[Int](Tables.Summary.yellowCards)

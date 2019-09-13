@@ -51,8 +51,8 @@ object Teams {
   }
 
   def checkTeam(id: Int, userId: Int): Boolean = {
-    DBUtils.getTable(teamsConstants, rename = false).filter(s"${teamsConstants.id} = $id")
-      .filter(s"${teamsConstants.owner} = $userId").count() != 0
+    !DBUtils.getTable(teamsConstants, rename = false).filter(s"${teamsConstants.id} = $id")
+      .filter(s"${teamsConstants.owner} = $userId").isEmpty
   }
 
   def getTeamData(id: Int): Row = {
@@ -60,11 +60,8 @@ object Teams {
   }
 
   def getUserTeam(userId: Int): Row = {
-    try {
-      DBUtils.getTable(teamsConstants, rename = false).filter(s"${teamsConstants.owner} = $userId").collect()(0)
-    } catch {
-      case _: ArrayIndexOutOfBoundsException => null
-    }
+    val teamDf = DBUtils.getTable(teamsConstants, rename = false).filter(s"${teamsConstants.owner} = $userId")
+    if (teamDf.isEmpty) null else teamDf.collect()(0)
   }
 
 }

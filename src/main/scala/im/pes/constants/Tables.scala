@@ -3,7 +3,7 @@ package im.pes.constants
 object Tables {
 
   trait Table {
-    val tableName: String = null
+    val tableName: String
   }
 
   val primaryKey: String = "id"
@@ -164,18 +164,21 @@ object Tables {
     val gameId = "gameId"
     val playerId = "playerId"
     val summary = "summary"
-    val activities = "activities"
   }
 
-  case object Activities {
+  case object Activities extends Table {
+    override val tableName = "active_games_players_activities"
+    val id = "id"
+    val gameId = "gameId"
+    val playerId = "playerId"
     val activityType = "activityType"
-    val time = "time"
     val angle = "angle"
     val x = "x"
     val y = "y"
     val firstAngle = "firstAngle"
     val secondAngle = "secondAngle"
     val power = "power"
+    val timestamp = "timestamp"
   }
 
   case object Summary {

@@ -6,7 +6,7 @@ import akka.http.scaladsl.model.StatusCodes
 import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.server.Route
 import im.pes.constants.{ActivityTypes, CommonConstants, Paths}
-import im.pes.db.ActiveGames.{activitiesConstants, addActivitySchema, addPassActivitySchema, addRunActivitySchema, addShotActivitySchema, addStayActivitySchema, addTackleActivitySchema}
+import im.pes.db.ActiveGames._
 import im.pes.db.{ActiveGames, Players}
 import im.pes.utils.DBUtils
 import spray.json.DefaultJsonProtocol
@@ -15,15 +15,25 @@ import spray.json.DefaultJsonProtocol
 object ActiveGameAPI extends SprayJsonSupport with DefaultJsonProtocol {
 
   def getRoute: Route =
-    path(Paths.games / IntNumber / IntNumber) { (gameId, playerId) =>
-      post {
-        headerValueByName(CommonConstants.token) { token =>
-          entity(as[String]) { activity =>
-            complete(addActivity(gameId, playerId, activity, token))
-          }
-        }
+    path(Paths.games / IntNumber / Paths.playersData) { gameId =>
+      get {
+        complete(getActiveGamePlayersData(gameId))
       }
     } ~
+      path(Paths.games / IntNumber / Paths.playersData / IntNumber) { (gameId, activityId) =>
+        get {
+          complete(getActiveGamePlayersActivities(gameId, activityId))
+        }
+      } ~
+      path(Paths.games / IntNumber / IntNumber) { (gameId, playerId) =>
+        post {
+          headerValueByName(CommonConstants.token) { token =>
+            entity(as[String]) { activity =>
+              complete(addActivity(gameId, playerId, activity, token))
+            }
+          }
+        }
+      } ~
       path(Paths.games / IntNumber / Paths.playersData / IntNumber) { (gameId, playerId) =>
         post {
           headerValueByName(CommonConstants.token) { token =>
@@ -41,6 +51,13 @@ object ActiveGameAPI extends SprayJsonSupport with DefaultJsonProtocol {
         }
       }
 
+  def getActiveGamePlayersData(gameId: Int): ToResponseMarshallable = {
+    ActiveGames.getActiveGamePlayersData(gameId)
+  }
+
+  def getActiveGamePlayersActivities(gameId: Int, activityId: Int): ToResponseMarshallable = {
+    ActiveGames.getActiveGamePlayersActivities(gameId, activityId)
+  }
 
   def addActivity(gameId: Int, playerId: Int, activity: String, token: String): ToResponseMarshallable = {
     val userId = DBUtils.getIdByToken(token)
@@ -61,7 +78,7 @@ object ActiveGameAPI extends SprayJsonSupport with DefaultJsonProtocol {
           case ActivityTypes.tackle => DBUtils.dataToDf(addTackleActivitySchema, activity)
           case _ => return StatusCodes.BadRequest
         }
-      ActiveGames.addActivity(playerId, addActivity.toJSON.collect()(0))
+      ActiveGames.addActivity(gameId, playerId, addActivity)
       StatusCodes.NoContent
     } catch {
       case _: NullPointerException => StatusCodes.BadRequest
@@ -77,7 +94,7 @@ object ActiveGameAPI extends SprayJsonSupport with DefaultJsonProtocol {
       return StatusCodes.BadRequest
     }
     ActiveGames.addActiveGamePlayerData(playerId, gameId)
-    ActiveGames.addActivity(playerId, CommonConstants.stayActivity(0, 0))
+    ActiveGames.addStayActivity(gameId, playerId, 0, 0)
     StatusCodes.NoContent
   }
 

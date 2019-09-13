@@ -15,59 +15,17 @@ object DBUtils {
   }
 
   def getTableDataAsStringByPrimaryKey(table: Tables.Table, value: Int, dropColumns: Seq[String] = Nil): String = {
-    try {
-      getTable(table).filter(s"${Tables.primaryKey} = $value").drop(dropColumns: _*).toJSON.collect()(0)
-    } catch {
-      case _: ArrayIndexOutOfBoundsException => null
-    }
+    val df = getTableDfByPrimaryKey(table, value, dropColumns)
+    if (df.isEmpty) null else renameColumns(df, table).toJSON.collect()(0)
   }
 
   def getTableDataByPrimaryKey(table: Tables.Table, value: Int, dropColumns: Seq[String] = Nil): Row = {
-    try {
-      getTable(table, rename = false).filter(s"${Tables.primaryKey} = $value").drop(dropColumns: _*).collect()(0)
-    } catch {
-      case _: ArrayIndexOutOfBoundsException => null
-    }
-  }
-
-  def getTableDataByPrimaryKey(table: Tables.Table, value: Int, selectCol: String, selectCols: String*): Row = {
-    try {
-      getTable(table, rename = false).filter(s"${Tables.primaryKey} = $value").select(selectCol, selectCols: _*)
-        .collect()(0)
-    } catch {
-      case _: ArrayIndexOutOfBoundsException => null
-    }
+    val df = getTableDfByPrimaryKey(table, value, dropColumns)
+    if (df.isEmpty) null else df.collect()(0)
   }
 
   def getTableDfByPrimaryKey(table: Tables.Table, value: Int, dropColumns: Seq[String] = Nil): DataFrame = {
-      getTable(table, rename = false).filter(s"${Tables.primaryKey} = $value").drop(dropColumns: _*)
-  }
-
-  def getIdByToken(token: String): Int = {
-    try {
-      getTable(Tables.Sessions, rename = false).filter(s"${Tables.Sessions.token} = '$token'")
-        .select(Tables.Sessions.userId).collect()(0).getInt(0)
-    } catch {
-      case _: ArrayIndexOutOfBoundsException => -1
-    }
-  }
-
-  def getSessionId(userId: Int): Int = {
-    try {
-      getTable(Tables.Sessions, rename = false).filter(s"${Tables.Sessions.userId} = $userId")
-        .select(Tables.Sessions.id).collect()(0).getInt(0)
-    } catch {
-      case _: ArrayIndexOutOfBoundsException => -1
-    }
-  }
-
-  def getTableDataAsString(table: Tables.Table, params: Map[String, String],
-                           dropColumns: Seq[String] = Seq()): String = {
-    var df = getTable(table, rename = false)
-    for (param <- params) {
-      df = df.filter(s"${param._1} = ${param._2}")
-    }
-    dataToJsonFormat(renameColumns(df.drop(dropColumns: _*), table))
+    getTable(table, rename = false).filter(s"${Tables.primaryKey} = $value").drop(dropColumns: _*)
   }
 
   def getTable(table: Tables.Table, dropColumns: Seq[String] = Nil, rename: Boolean = true): DataFrame = {
@@ -81,24 +39,36 @@ object DBUtils {
   }
 
   def renameColumns(dataFrame: DataFrame, table: Tables.Table): DataFrame = {
-    var df = dataFrame
-    for (field <- table.getClass.getDeclaredFields) {
+    table.getClass.getDeclaredFields.foldLeft[DataFrame](dataFrame)((dataFrameWithRenamedColumn, field) => {
       field.setAccessible(true)
-      df = df.withColumnRenamed(field.get(table).toString, field.getName)
-    }
-    df
+      dataFrameWithRenamedColumn.withColumnRenamed(field.get(table).toString, field.getName)
+    })
   }
 
-  private def dataToJsonFormat(dataFrame: DataFrame): String = {
-    val builder = StringBuilder.newBuilder
-    builder.append('[')
-    for (row <- dataFrame.toJSON.collect()) {
-      builder.append(row).append(',')
-    }
-    if (builder.length() > 1) {
-      builder.setLength(builder.length() - 1)
-    }
-    builder.append(']').toString()
+  def getTableDataByPrimaryKey(table: Tables.Table, value: Int, selectCol: String, selectCols: String*): Row = {
+    val df = getTableDfByPrimaryKey(table, value)
+    if (df.isEmpty) null else df.select(selectCol, selectCols: _*).collect()(0)
+  }
+
+  def getIdByToken(token: String): Int = {
+    val df = getTable(Tables.Sessions, rename = false).filter(s"${Tables.Sessions.token} = '$token'")
+    if (df.isEmpty) -1 else df.select(Tables.Sessions.userId).collect()(0).getInt(0)
+  }
+
+  def getSessionId(userId: Int): Int = {
+    val df = getTable(Tables.Sessions, rename = false).filter(s"${Tables.Sessions.userId} = $userId")
+    if (df.isEmpty) -1 else df.select(Tables.Sessions.id).collect()(0).getInt(0)
+  }
+
+  def getTableDataAsString(table: Tables.Table, params: Map[String, String],
+                           dropColumns: Seq[String] = Seq()): String = {
+    val df = params
+      .foldLeft[DataFrame](getTable(table, rename = false))((df, param) => df.filter(s"${param._1} = ${param._2}"))
+    dataToJsonFormat(renameColumns(df.drop(dropColumns: _*), table))
+  }
+
+  def dataToJsonFormat(dataFrame: DataFrame): String = {
+    dataFrame.toJSON.collect.mkString("[", "," , "]" )
   }
 
   def addDataToTable(tableName: String, data: DataFrame): Unit = {
@@ -106,21 +76,19 @@ object DBUtils {
   }
 
   def renameColumnsToDBFormat(dataFrame: DataFrame, table: Tables.Table): DataFrame = {
-    var df = dataFrame
-    for (column <- dataFrame.columns) {
+    dataFrame.columns.foldLeft[DataFrame](dataFrame)((dataFrameWithRenamedColumn, column) => {
       val field = table.getClass.getDeclaredField(column)
       field.setAccessible(true)
-      df = df.withColumnRenamed(column, field.get(table).toString)
-    }
-    df
+      dataFrameWithRenamedColumn.withColumnRenamed(column, field.get(table).toString)
+    })
   }
 
   def deleteDataFromTable(tableName: String, id: Int): Unit = {
     stmt.executeUpdate(CommonConstants.sqlDeleteByPrimaryKeyQuery(tableName, id))
   }
 
-  def deleteDataFromTable(tableName: String, key: String, id: Int): Unit = {
-    stmt.executeUpdate(CommonConstants.sqlDeleteQuery(tableName, key, id))
+  def deleteDataFromTable(tableName: String, key: String, value: Int): Unit = {
+    stmt.executeUpdate(CommonConstants.sqlDeleteQuery(tableName, key, value))
   }
 
   def updateDataInTable(id: Int, data: Map[String, Any], tableName: String): Unit = {

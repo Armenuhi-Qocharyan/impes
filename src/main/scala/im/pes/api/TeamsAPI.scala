@@ -6,9 +6,9 @@ import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.server.Route
 import com.github.dwickern.macros.NameOf.nameOf
 import im.pes.constants.{CommonConstants, Paths}
+import im.pes.db.{Players, Teams, Transactions, Users}
 import im.pes.db.Teams.{addTeamSchema, teamsConstants, updateTeamSchema}
 import im.pes.db.Users.usersConstants
-import im.pes.db._
 import im.pes.utils.DBUtils
 
 object TeamsAPI {

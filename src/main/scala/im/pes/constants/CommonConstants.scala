@@ -66,7 +66,4 @@ object CommonConstants {
       Tables.Summary.yellowCards
     }\": 0, \"${Tables.Summary.redCard}\": false}"""
 
-  val stayActivity: (Int, Int) => String = (x: Int, y: Int) => s"""{\"activityType\": \"${
-    ActivityTypes.stay
-  }\", \"${Tables.Activities.x}\": $x, \"${Tables.Activities.y}\": $y}"""
 }
