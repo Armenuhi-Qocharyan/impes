@@ -16,7 +16,7 @@ object Sessions {
       DBUtils.addDataToTable(sessionsConstants.tableName,
         Seq((userId, token)).toDF(sessionsConstants.userId, sessionsConstants.token))
     } else {
-      DBUtils.updateDataInTable(id, Map(sessionsConstants.token -> token), sessionsConstants.tableName)
+      DBUtils.updateDataInTableByPrimaryKey(id, Map(sessionsConstants.token -> token), sessionsConstants.tableName)
     }
   }
 

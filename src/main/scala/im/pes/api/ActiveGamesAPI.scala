@@ -50,32 +50,32 @@ object ActiveGamesAPI {
   }
 
   def addGame(addGame: String): ToResponseMarshallable = {
-    val addGameDf =
-      try {
-        DBUtils.dataToDf(addActiveGameSchema, addGame)
-      } catch {
-        case _: NullPointerException => return StatusCodes.BadRequest
-      }
-    val gameId = ActiveGames.addActiveGame(
-      addGameDf.drop(nameOf(addActiveGameConstants.firstTeamPlayers), nameOf(addActiveGameConstants.secondTeamPlayers)))
-    val addGameData = addGameDf.collect()(0)
-    addTeamPlayers(gameId,
-      addGameData.getAs[Seq[Row]](nameOf(addActiveGameConstants.firstTeamPlayers)))
-    addTeamPlayers(gameId,
-      addGameData.getAs[Seq[Row]](nameOf(addActiveGameConstants.secondTeamPlayers)))
-    StatusCodes.OK
+    val addGameDf = DBUtils.dataToDf(addActiveGameSchema, addGame)
+    val addGameData = addGameDf.first
+    if (addGameData.anyNull) {
+      StatusCodes.BadRequest
+    } else {
+      val gameId = ActiveGames.addActiveGame(
+        addGameDf
+          .drop(nameOf(addActiveGameConstants.firstTeamPlayers), nameOf(addActiveGameConstants.secondTeamPlayers)))
+      addTeamPlayers(gameId, addGameData.getAs[Seq[Row]](nameOf(addActiveGameConstants.firstTeamPlayers)))
+      addTeamPlayers(gameId, addGameData.getAs[Seq[Row]](nameOf(addActiveGameConstants.secondTeamPlayers)))
+      StatusCodes.OK
+    }
   }
 
   def addTeamPlayers(gameId: Int, teamPlayers: Seq[Row]): Unit = {
     for (teamPlayer <- teamPlayers) {
-      //TODO check player in team
-      if (teamPlayer.getAs[String](addActiveGameConstants.playerState).equals("reserve")) {
-        //TODO add player to reserve list
-      } else {
+      if (!teamPlayer.anyNull) {
         val playerId = teamPlayer.getAs[Int](addActiveGameConstants.playerId)
-        ActiveGames.addActiveGamePlayerData(gameId, playerId)
-        //TODO get x and y according to the player state
-        ActiveGames.addStayActivity(gameId, playerId, 0, 0)
+        //TODO check player in team
+        if (teamPlayer.getAs[String](addActiveGameConstants.playerState).equals("reserve")) {
+          ActiveGames.addActiveGameReservePlayer(gameId, playerId)
+        } else {
+          ActiveGames.addActiveGamePlayerData(gameId, playerId)
+          //TODO get x and y according to the player state
+          ActiveGames.addStayActivity(gameId, playerId, 0, 0)
+        }
       }
     }
   }
@@ -90,27 +90,31 @@ object ActiveGamesAPI {
         Tables.TeamsStatistics.yellowCards -> 0, Tables.TeamsStatistics.redCards -> 0,
         Tables.TeamsStatistics.falls -> 0, Tables.TeamsStatistics.shots -> 0, Tables.TeamsStatistics.aerialsWon -> 0)
     val activeGameDf = ActiveGames.getGameDF(id)
-    val activeGame = if (activeGameDf.isEmpty) return StatusCodes.BadRequest else activeGameDf.collect()(0)
-    val firstTeamId = activeGame.getAs[Int](activeGamesConstants.firstTeamId)
-    val secondTeamId = activeGame.getAs[Int](activeGamesConstants.secondTeamId)
-    val doneGameId = DoneGames.addDoneGame(activeGameDf)
-    for (gamePlayer <- ActiveGames.getGamePlayers(id)) {
-      val playerId = gamePlayer.getAs[Int](Tables.ActiveGamesPlayersData.playerId)
-      val teamId = Players.getPlayerTeamId(playerId)
-      val summaryDf = DBUtils.dataToDf(summarySchema, gamePlayer.getAs[String](Tables.ActiveGamesPlayersData.summary))
-      Statistics.addPlayerStatistics(playerId, teamId, doneGameId, summaryDf)
-      val summaryData = summaryDf.collect()(0)
-      Players.updatePlayer(playerId, summaryData)
-      if (teamId == firstTeamId) collectTeamData(firstTeamData, summaryData) else collectTeamData(secondTeamData,
-        summaryData)
+    if (activeGameDf.isEmpty) {
+      StatusCodes.BadRequest
+    } else {
+      val activeGame = activeGameDf.first
+      val firstTeamId = activeGame.getAs[Int](activeGamesConstants.firstTeamId)
+      val secondTeamId = activeGame.getAs[Int](activeGamesConstants.secondTeamId)
+      val doneGameId = DoneGames.addDoneGame(activeGameDf)
+      for (gamePlayer <- ActiveGames.getGamePlayers(id)) {
+        val playerId = gamePlayer.getAs[Int](Tables.ActiveGamesPlayersData.playerId)
+        val teamId = Players.getPlayerTeamId(playerId)
+        val summaryDf = DBUtils.dataToDf(summarySchema, gamePlayer.getAs[String](Tables.ActiveGamesPlayersData.summary))
+        Statistics.addPlayerStatistics(playerId, teamId, doneGameId, summaryDf)
+        val summaryData = summaryDf.first
+        Players.updatePlayer(playerId, summaryData)
+        if (teamId == firstTeamId) collectTeamData(firstTeamData, summaryData) else collectTeamData(secondTeamData,
+          summaryData)
+      }
+      ActiveGames.deleteActiveGame(id)
+      DoneGames.updateDoneGame(doneGameId,
+        Map(Tables.DoneGames.firstTeamGoals -> firstTeamData(Tables.TeamsStatistics.goals),
+          Tables.DoneGames.secondTeamGoals -> secondTeamData(Tables.TeamsStatistics.goals)))
+      Statistics.addTeamStatistics(firstTeamId, doneGameId, firstTeamData)
+      Statistics.addTeamStatistics(secondTeamId, doneGameId, secondTeamData)
+      StatusCodes.OK
     }
-    ActiveGames.deleteActiveGame(id)
-    DoneGames.updateDoneGame(doneGameId,
-      Map(Tables.DoneGames.firstTeamGoals -> firstTeamData(Tables.TeamsStatistics.goals),
-        Tables.DoneGames.secondTeamGoals -> secondTeamData(Tables.TeamsStatistics.goals)))
-    Statistics.addTeamStatistics(firstTeamId, doneGameId, firstTeamData)
-    Statistics.addTeamStatistics(secondTeamId, doneGameId, secondTeamData)
-    StatusCodes.OK
   }
 
   def collectTeamData(teamData: scala.collection.mutable.Map[String, Int], playerSummary: Row): Unit = {

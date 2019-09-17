@@ -6,10 +6,11 @@ import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.server.Route
 import com.github.dwickern.macros.NameOf.nameOf
 import im.pes.constants.{CommonConstants, Paths}
-import im.pes.db.Players.{addPlayerSchema, playersConstants, updatePlayerSchema}
+import im.pes.db.Players.{addPlayerSchema, addPlayerWithDefaultSchema, playersConstants, updatePlayerSchema, updatePlayerWithDefaultSchema}
 import im.pes.db.Teams.teamsConstants
 import im.pes.db.{Players, Teams}
 import im.pes.utils.DBUtils
+import org.apache.spark.sql.functions
 
 object PlayersAPI {
 
@@ -62,13 +63,15 @@ object PlayersAPI {
 
   def addPlayer(player: String, token: String): ToResponseMarshallable = {
     val userId = DBUtils.getIdByToken(token)
-    val playerDf =
-      try {
-        DBUtils.dataToDf(addPlayerSchema, player)
-      } catch {
-        case _: NullPointerException => return StatusCodes.BadRequest
-      }
-    val playerData = playerDf.collect()(0)
+    val playerDf = if (DBUtils.isAdmin(userId)) {
+      DBUtils.dataToDf(addPlayerWithDefaultSchema, player)
+    } else {
+      DBUtils.dataToDf(addPlayerSchema, player).withColumn(nameOf(playersConstants.isDefault), functions.lit(false))
+    }
+    val playerData = playerDf.first
+    if (playerData.anyNull) {
+      StatusCodes.BadRequest
+    }
     val teamId = playerData.getAs[Int](nameOf(playersConstants.teamId))
     if (Teams.checkTeam(teamId, userId)) {
       //TODO check fields values
@@ -80,7 +83,7 @@ object PlayersAPI {
         playerData.getAs[Int](nameOf(playersConstants.physique)))
       val cost = Players.calculateCost(skills, playerData.getAs[Int](nameOf(playersConstants.age)))
       if (cost > teamBudget) return StatusCodes.BadRequest
-      Players.addPlayer(playerDf, skills, cost)
+      Players.addPlayer(playerDf, cost, skills)
       Teams.updateTeam(teamId, Map(teamsConstants.budget -> (teamBudget - cost)))
       StatusCodes.OK
     } else {
@@ -90,21 +93,22 @@ object PlayersAPI {
 
   def updatePlayer(id: Int, updatePlayer: String, token: String): ToResponseMarshallable = {
     val userId = DBUtils.getIdByToken(token)
-    val updateTeamDf = DBUtils.dataToDf(updatePlayerSchema, updatePlayer)
     if (DBUtils.isAdmin(userId)) {
+      val updateTeamDf = DBUtils.dataToDf(updatePlayerWithDefaultSchema, updatePlayer)
       //TODO check fields values
       Players.updatePlayer(id, updateTeamDf)
-      return StatusCodes.OK
-    }
-    val teamId = Option(updateTeamDf.collect()(0).getAs[Int](nameOf(playersConstants.teamId)))
-    if (Players.checkPlayer(id, userId)) {
+      StatusCodes.OK
+    } else if (Players.checkPlayer(id, userId)) {
+      val updateTeamDf = DBUtils.dataToDf(updatePlayerSchema, updatePlayer)
+      val teamId = Option(updateTeamDf.first.getAs[Int](nameOf(playersConstants.teamId)))
       //TODO check fields values
       //TODO check what user may update
       if (teamId.isDefined && teamId.get != Players.getPlayerData(id).getAs[Int](playersConstants.teamId)) {
         StatusCodes.BadRequest
+      } else {
+        Players.updatePlayer(id, updateTeamDf)
+        StatusCodes.NoContent
       }
-      Players.updatePlayer(id, updateTeamDf)
-      StatusCodes.NoContent
     } else {
       StatusCodes.Forbidden
     }
@@ -115,9 +119,8 @@ object PlayersAPI {
     val userId = DBUtils.getIdByToken(token)
     if (DBUtils.isAdmin(userId)) {
       Players.deletePlayer(id)
-      return StatusCodes.OK
-    }
-    if (Players.checkPlayer(id, userId)) {
+      StatusCodes.OK
+    } else if (Players.checkPlayer(id, userId)) {
       val playerData = Players.getPlayerData(id)
       val teamData = Teams.getTeamData(playerData.getAs[Int](playersConstants.teamId))
       Teams.updateTeam(teamData.getAs[Int](teamsConstants.id),

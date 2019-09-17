@@ -13,40 +13,39 @@ object ActiveGames {
   val activitiesConstants: Tables.Activities.type = Tables.Activities
   val activeGamesConstants: Tables.ActiveGames.type = Tables.ActiveGames
   val activeGamesPlayersDataConstants: Tables.ActiveGamesPlayersData.type = Tables.ActiveGamesPlayersData
+  val activeGamesReservePlayersConstants: Tables.ActiveGamesReservePlayers.type = Tables.ActiveGamesReservePlayers
   val summaryConstants: Tables.Summary.type = Tables.Summary
   val addActiveGameConstants: Tables.AddActiveGameData.type = Tables.AddActiveGameData
 
   val addActivitySchema: StructType = (new StructType)
     .add(nameOf(activitiesConstants.activityType), DataTypes.StringType, nullable = false)
   val addRunActivitySchema: StructType = addActivitySchema
-    .add(nameOf(activitiesConstants.angle), DataTypes.IntegerType, nullable = false)
+    .add(nameOf(activitiesConstants.angle), DataTypes.IntegerType)
   val addStayActivitySchema: StructType = addActivitySchema
-    .add(nameOf(activitiesConstants.x), DataTypes.IntegerType, nullable = false)
-    .add(nameOf(activitiesConstants.y), DataTypes.IntegerType, nullable = false)
+    .add(nameOf(activitiesConstants.x), DataTypes.IntegerType)
+    .add(nameOf(activitiesConstants.y), DataTypes.IntegerType)
   val addShotActivitySchema: StructType = addActivitySchema
-    .add(nameOf(activitiesConstants.firstAngle), DataTypes.IntegerType, nullable = false)
-    .add(nameOf(activitiesConstants.secondAngle), DataTypes.IntegerType, nullable = false)
-    .add(nameOf(activitiesConstants.power), DataTypes.IntegerType, nullable = false)
+    .add(nameOf(activitiesConstants.firstAngle), DataTypes.IntegerType)
+    .add(nameOf(activitiesConstants.secondAngle), DataTypes.IntegerType)
+    .add(nameOf(activitiesConstants.power), DataTypes.IntegerType)
   val addPassActivitySchema: StructType = addActivitySchema
-    .add(nameOf(activitiesConstants.firstAngle), DataTypes.IntegerType, nullable = false)
-    .add(nameOf(activitiesConstants.secondAngle), DataTypes.IntegerType, nullable = false)
-    .add(nameOf(activitiesConstants.power), DataTypes.IntegerType, nullable = false)
+    .add(nameOf(activitiesConstants.firstAngle), DataTypes.IntegerType)
+    .add(nameOf(activitiesConstants.secondAngle), DataTypes.IntegerType)
+    .add(nameOf(activitiesConstants.power), DataTypes.IntegerType)
   val addTackleActivitySchema: StructType = addActivitySchema
-    .add(nameOf(activitiesConstants.angle), DataTypes.IntegerType, nullable = false)
+    .add(nameOf(activitiesConstants.angle), DataTypes.IntegerType)
 
   val teamPlayerSchema: StructType = (new StructType)
-    .add(nameOf(addActiveGameConstants.playerId), DataTypes.IntegerType, nullable = false)
-    .add(nameOf(addActiveGameConstants.playerState), DataTypes.StringType, nullable = false)
+    .add(nameOf(addActiveGameConstants.playerId), DataTypes.IntegerType)
+    .add(nameOf(addActiveGameConstants.playerState), DataTypes.StringType)
 
   val addActiveGameSchema: StructType = (new StructType)
-    .add(nameOf(addActiveGameConstants.firstTeamId), DataTypes.IntegerType, nullable = false)
-    .add(nameOf(addActiveGameConstants.secondTeamId), DataTypes.IntegerType, nullable = false)
-    .add(nameOf(addActiveGameConstants.firstTeamPlayers), new ArrayType(teamPlayerSchema, containsNull = false),
-      nullable = false)
-    .add(nameOf(addActiveGameConstants.secondTeamPlayers), new ArrayType(teamPlayerSchema, containsNull = false),
-      nullable = false)
-    .add(nameOf(addActiveGameConstants.championship), DataTypes.StringType, nullable = false)
-    .add(nameOf(addActiveGameConstants.championshipState), DataTypes.StringType, nullable = false)
+    .add(nameOf(addActiveGameConstants.firstTeamId), DataTypes.IntegerType)
+    .add(nameOf(addActiveGameConstants.secondTeamId), DataTypes.IntegerType)
+    .add(nameOf(addActiveGameConstants.firstTeamPlayers), new ArrayType(teamPlayerSchema, containsNull = false))
+    .add(nameOf(addActiveGameConstants.secondTeamPlayers), new ArrayType(teamPlayerSchema, containsNull = false))
+    .add(nameOf(addActiveGameConstants.championship), DataTypes.StringType)
+    .add(nameOf(addActiveGameConstants.championshipState), DataTypes.StringType)
 
   val summarySchema: StructType = (new StructType)
     .add(summaryConstants.goals, DataTypes.IntegerType, nullable = false)
@@ -90,24 +89,41 @@ object ActiveGames {
   }
 
   def addActiveGame(df: DataFrame): Int = {
-    val id = DBUtils.getTable(activeGamesConstants, rename = false).count() + 1
+    val id = DBUtils.getTable(activeGamesConstants, rename = false).count + 1
     DBUtils.addDataToTable(activeGamesConstants.tableName,
       DBUtils.renameColumnsToDBFormat(df, activeGamesConstants).withColumn(activeGamesConstants.id, functions.lit(id)))
     id.toInt
   }
 
   def addActiveGamePlayerData(gameId: Int, playerId: Int): Unit = {
-    val id = DBUtils.getTable(activeGamesPlayersDataConstants, rename = false).count() + 1
-    val data = Seq((id, gameId, playerId, CommonConstants.defaultSummaryJson))
+    val id = DBUtils.getTable(activeGamesPlayersDataConstants, rename = false).count + 1
+    val data = Seq((id, gameId, playerId, true, CommonConstants.defaultSummaryJson))
       .toDF(activeGamesPlayersDataConstants.id, activeGamesPlayersDataConstants.gameId,
-        activeGamesPlayersDataConstants.playerId, activeGamesPlayersDataConstants.summary)
+        activeGamesPlayersDataConstants.playerId, activeGamesPlayersDataConstants.active,
+        activeGamesPlayersDataConstants.summary)
     DBUtils.addDataToTable(activeGamesPlayersDataConstants.tableName, data)
+  }
+
+  def addActiveGameReservePlayer(gameId: Int, playerId: Int): Unit = {
+    val id = DBUtils.getTable(activeGamesReservePlayersConstants, rename = false).count + 1
+    val data = Seq((id, gameId, playerId))
+      .toDF(activeGamesReservePlayersConstants.id, activeGamesReservePlayersConstants.gameId,
+        activeGamesReservePlayersConstants.playerId)
+    DBUtils.addDataToTable(activeGamesReservePlayersConstants.tableName, data)
   }
 
   def deleteActiveGame(id: Int): Unit = {
     DBUtils.deleteDataFromTable(activeGamesConstants.tableName, id)
     DBUtils.deleteDataFromTable(activeGamesPlayersDataConstants.tableName, activeGamesPlayersDataConstants.gameId, id)
     DBUtils.deleteDataFromTable(activitiesConstants.tableName, activitiesConstants.gameId, id)
+    DBUtils
+      .deleteDataFromTable(activeGamesReservePlayersConstants.tableName, activeGamesReservePlayersConstants.gameId, id)
+  }
+
+  def deleteReservePlayer(playerId: Int): Unit = {
+    DBUtils
+      .deleteDataFromTable(activeGamesReservePlayersConstants.tableName, activeGamesReservePlayersConstants.playerId,
+        playerId)
   }
 
   def addStayActivity(gameId: Int, playerId: Int, x: Int, y: Int): Unit = {
@@ -117,7 +133,7 @@ object ActiveGames {
   }
 
   def addActivity(gameId: Int, playerId: Int, activityDf: DataFrame): Unit = {
-    val id = DBUtils.getTable(activitiesConstants, rename = false).count() + 1
+    val id = DBUtils.getTable(activitiesConstants, rename = false).count + 1
     DBUtils.addDataToTable(activitiesConstants.tableName,
       DBUtils.renameColumnsToDBFormat(
         activityDf.withColumn(activitiesConstants.timestamp, functions.lit(System.currentTimeMillis()))
@@ -145,6 +161,11 @@ object ActiveGames {
       activeGamesPlayersDataConstants.summary, builder.toString(), activeGamesPlayersDataConstants.playerId, playerId))
   }
 
+  def deactivatePlayer(playerId: Int): Unit = {
+    DBUtils.updateDataInTable(activeGamesPlayersDataConstants.playerId, playerId,
+      Map(activeGamesPlayersDataConstants.active -> false), activeGamesPlayersDataConstants.tableName)
+  }
+
   def getGameData(id: Int): Row = {
     DBUtils.getTableDataByPrimaryKey(activeGamesConstants, id)
   }
@@ -161,6 +182,17 @@ object ActiveGames {
   def playerDataExists(playerId: Int): Boolean = {
     !DBUtils.getTable(activeGamesPlayersDataConstants, rename = false)
       .filter(s"${activeGamesPlayersDataConstants.playerId} = $playerId").isEmpty
+  }
+
+  def isPlayerActive(playerId: Int): Boolean = {
+    !DBUtils.getTable(activeGamesPlayersDataConstants, rename = false)
+      .filter(s"${activeGamesPlayersDataConstants.playerId} = $playerId")
+      .filter(s"${activeGamesPlayersDataConstants.active} = true").isEmpty
+  }
+
+  def checkReservePlayer(playerId: Int): Boolean = {
+    !DBUtils.getTable(activeGamesReservePlayersConstants, rename = false)
+      .filter(s"${activeGamesReservePlayersConstants.playerId} = $playerId").isEmpty
   }
 
 }

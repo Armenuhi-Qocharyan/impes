@@ -11,15 +11,17 @@ object Players {
 
   val playersConstants: Tables.Players.type = Tables.Players
   val addPlayerSchema: StructType = (new StructType)
-    .add(nameOf(playersConstants.name), DataTypes.StringType, nullable = false)
-    .add(nameOf(playersConstants.teamId), DataTypes.IntegerType, nullable = false)
-    .add(nameOf(playersConstants.position), DataTypes.StringType, nullable = false)
-    .add(nameOf(playersConstants.age), DataTypes.IntegerType, nullable = false)
-    .add(nameOf(playersConstants.height), DataTypes.IntegerType, nullable = false)
-    .add(nameOf(playersConstants.weight), DataTypes.IntegerType, nullable = false)
-    .add(nameOf(playersConstants.gameIntelligence), DataTypes.IntegerType, nullable = false)
-    .add(nameOf(playersConstants.teamPlayer), DataTypes.IntegerType, nullable = false)
-    .add(nameOf(playersConstants.physique), DataTypes.IntegerType, nullable = false)
+    .add(nameOf(playersConstants.name), DataTypes.StringType)
+    .add(nameOf(playersConstants.teamId), DataTypes.IntegerType)
+    .add(nameOf(playersConstants.position), DataTypes.StringType)
+    .add(nameOf(playersConstants.age), DataTypes.IntegerType)
+    .add(nameOf(playersConstants.height), DataTypes.IntegerType)
+    .add(nameOf(playersConstants.weight), DataTypes.IntegerType)
+    .add(nameOf(playersConstants.gameIntelligence), DataTypes.IntegerType)
+    .add(nameOf(playersConstants.teamPlayer), DataTypes.IntegerType)
+    .add(nameOf(playersConstants.physique), DataTypes.IntegerType)
+  val addPlayerWithDefaultSchema: StructType = addPlayerSchema
+    .add(nameOf(playersConstants.isDefault), DataTypes.BooleanType)
   val updatePlayerSchema: StructType = (new StructType)
     .add(nameOf(playersConstants.name), DataTypes.StringType)
     .add(nameOf(playersConstants.teamId), DataTypes.IntegerType)
@@ -30,6 +32,8 @@ object Players {
     .add(nameOf(playersConstants.gameIntelligence), DataTypes.IntegerType)
     .add(nameOf(playersConstants.teamPlayer), DataTypes.IntegerType)
     .add(nameOf(playersConstants.physique), DataTypes.IntegerType)
+  val updatePlayerWithDefaultSchema: StructType = updatePlayerSchema
+    .add(nameOf(playersConstants.isDefault), DataTypes.BooleanType)
 
 
   def getPlayers(params: Map[String, String]): String = {
@@ -41,7 +45,7 @@ object Players {
   }
 
   def addPlayer(df: DataFrame, cost: Int, skills: Int): Unit = {
-    val id = DBUtils.getTable(playersConstants, rename = false).count() + 1
+    val id = DBUtils.getTable(playersConstants, rename = false).count + 1
     DBUtils.addDataToTable(playersConstants.tableName,
       DBUtils.renameColumnsToDBFormat(df, playersConstants).withColumn(playersConstants.id, functions.lit(id))
         .withColumn(playersConstants.cost, functions.lit(cost))
@@ -60,23 +64,23 @@ object Players {
   }
 
   def updatePlayer(id: Int, updateDf: DataFrame): Unit = {
-    val updateData = updateDf.collect()(0)
+    val updateData = updateDf.first
     if (Option(updateData.getAs[Int](nameOf(playersConstants.gameIntelligence))).isDefined ||
       Option(updateData.getAs[Int](nameOf(playersConstants.teamPlayer))).isDefined ||
       Option(updateData.getAs[Int](nameOf(playersConstants.physique))).isDefined ||
       Option(updateData.getAs[Int](nameOf(playersConstants.age))).isDefined) {
       val updatePlayerWithSkillsDf = getUpdatePlayerWithSkills(id, updateDf)
-      updatePlayer(id, updatePlayerWithSkillsDf.collect()(0).getValuesMap(updatePlayerWithSkillsDf.columns))
+      updatePlayer(id, updatePlayerWithSkillsDf.first.getValuesMap(updatePlayerWithSkillsDf.columns))
     } else {
       val df = DBUtils.renameColumnsToDBFormat(updateDf, playersConstants)
-      updatePlayer(id, df.collect()(0).getValuesMap(df.columns))
+      updatePlayer(id, df.first.getValuesMap(df.columns))
     }
   }
 
   private def getUpdatePlayerWithSkills(playerId: Int, updateDf: DataFrame): DataFrame = {
     val player = getPlayerData(playerId)
     val df = DBUtils.renameColumnsToDBFormat(updateDf, playersConstants)
-    val updateData = df.collect()(0)
+    val updateData = df.first
     val gameIntelligence = Option(updateData.getAs[Int](playersConstants.gameIntelligence))
       .getOrElse(player.getAs[Int](playersConstants.gameIntelligence))
     val teamPlayer = Option(updateData.getAs[Int](playersConstants.teamPlayer))
@@ -165,9 +169,8 @@ object Players {
   }
 
   def deletePlayer(id: Int, cost: Int): Unit = {
-    if (CommonConstants.defaultPlayers.contains(id)) {
-      Players.updatePlayer(id,
-        Map(playersConstants.teamId -> Teams.getUserTeam(CommonConstants.admins.head).getAs[Int](Tables.Teams.id)))
+    if (isDefaultPlayer(id)) {
+      Players.updatePlayer(id, Map(playersConstants.teamId -> Teams.getAdminTeamId))
       Transactions.addPlayerTransaction(id, cost)
     } else {
       deletePlayer(id)
@@ -175,7 +178,7 @@ object Players {
   }
 
   def updatePlayer(id: Int, updateData: Map[String, Any]): Unit = {
-    DBUtils.updateDataInTable(id, updateData, playersConstants.tableName)
+    DBUtils.updateDataInTableByPrimaryKey(id, updateData, playersConstants.tableName)
   }
 
   def deletePlayer(id: Int): Unit = {
@@ -192,6 +195,10 @@ object Players {
         .filter(s"${teamsConstants.id} = ${player.getAs[Int](playersConstants.teamId)}")
         .filter(s"${teamsConstants.owner} = $userId").isEmpty
     }
+  }
+
+  def isDefaultPlayer(id: Int): Boolean = {
+    !DBUtils.getTableDfByPrimaryKey(playersConstants, id).filter(s"${playersConstants.isDefault} = true").isEmpty
   }
 
   def getPlayerData(id: Int): Row = {

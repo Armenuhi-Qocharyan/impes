@@ -5,6 +5,7 @@ import akka.http.scaladsl.marshalling.ToResponseMarshallable
 import akka.http.scaladsl.model.StatusCodes
 import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.server.Route
+import com.github.dwickern.macros.NameOf.nameOf
 import im.pes.constants.{ActivityTypes, CommonConstants, Paths}
 import im.pes.db.ActiveGames._
 import im.pes.db.{ActiveGames, Players}
@@ -34,10 +35,10 @@ object ActiveGameAPI extends SprayJsonSupport with DefaultJsonProtocol {
           }
         }
       } ~
-      path(Paths.games / IntNumber / Paths.playersData / IntNumber) { (gameId, playerId) =>
+      path(Paths.games / IntNumber / Paths.replacePlayer / IntNumber / IntNumber) { (gameId, replacePlayerId, replaceToPlayerId) =>
         post {
           headerValueByName(CommonConstants.token) { token =>
-            complete(addActiveGamePlayerData(gameId, playerId, token))
+            complete(replacePlayer(gameId, replacePlayerId, replaceToPlayerId, token))
           }
         }
       } ~
@@ -62,52 +63,58 @@ object ActiveGameAPI extends SprayJsonSupport with DefaultJsonProtocol {
   def addActivity(gameId: Int, playerId: Int, activity: String, token: String): ToResponseMarshallable = {
     val userId = DBUtils.getIdByToken(token)
     if (!Players.checkPlayer(playerId, userId)) {
-      return StatusCodes.Forbidden
-    }
-    if (!ActiveGames.playerDataExists(playerId)) {
-      return StatusCodes.BadRequest
-    }
-    try {
-      val addActivity =
-        DBUtils.dataToDf(addActivitySchema, activity).collect()(0)
-          .getAs[String](activitiesConstants.activityType) match {
-          case ActivityTypes.run => DBUtils.dataToDf(addRunActivitySchema, activity)
-          case ActivityTypes.stay => DBUtils.dataToDf(addStayActivitySchema, activity)
-          case ActivityTypes.shot => DBUtils.dataToDf(addShotActivitySchema, activity)
-          case ActivityTypes.pass => DBUtils.dataToDf(addPassActivitySchema, activity)
-          case ActivityTypes.tackle => DBUtils.dataToDf(addTackleActivitySchema, activity)
-          case _ => return StatusCodes.BadRequest
-        }
-      ActiveGames.addActivity(gameId, playerId, addActivity)
-      StatusCodes.NoContent
-    } catch {
-      case _: NullPointerException => StatusCodes.BadRequest
+      StatusCodes.Forbidden
+    } else if (!ActiveGames.isPlayerActive(playerId)) {
+      StatusCodes.BadRequest
+    } else {
+        val addActivity =
+          DBUtils.dataToDf(addActivitySchema, activity).first
+            .getAs[String](activitiesConstants.activityType) match {
+            case ActivityTypes.run => DBUtils.dataToDf(addRunActivitySchema, activity)
+            case ActivityTypes.stay => DBUtils.dataToDf(addStayActivitySchema, activity)
+            case ActivityTypes.shot => DBUtils.dataToDf(addShotActivitySchema, activity)
+            case ActivityTypes.pass => DBUtils.dataToDf(addPassActivitySchema, activity)
+            case ActivityTypes.tackle => DBUtils.dataToDf(addTackleActivitySchema, activity)
+            case _ => return StatusCodes.BadRequest
+          }
+      if (addActivity.first.anyNull) {
+        StatusCodes.BadRequest
+      } else {
+        ActiveGames.addActivity(gameId, playerId, addActivity)
+        StatusCodes.NoContent
+      }
+
     }
   }
 
-  def addActiveGamePlayerData(gameId: Int, playerId: Int, token: String): ToResponseMarshallable = {
+  def replacePlayer(gameId: Int, replacePlayerId: Int, replaceToPlayerId: Int, token: String): ToResponseMarshallable = {
     val userId = DBUtils.getIdByToken(token)
-    if (!Players.checkPlayer(playerId, userId)) {
-      return StatusCodes.Forbidden
+    if (!Players.checkPlayer(replacePlayerId, userId) || !Players.checkPlayer(replaceToPlayerId, userId)) {
+      StatusCodes.Forbidden
+    } else if (!ActiveGames.isPlayerActive(replacePlayerId) || !ActiveGames.checkReservePlayer(replaceToPlayerId)) {
+      StatusCodes.BadRequest
+    } else {
+      ActiveGames.addActiveGamePlayerData(gameId, replaceToPlayerId)
+      ActiveGames.deleteReservePlayer(replaceToPlayerId)
+      ActiveGames.deactivatePlayer(replacePlayerId)
+      ActiveGames.addStayActivity(gameId, replaceToPlayerId, 0, 0)
+      StatusCodes.NoContent
     }
-    if (ActiveGames.playerDataExists(playerId)) {
-      return StatusCodes.BadRequest
-    }
-    ActiveGames.addActiveGamePlayerData(playerId, gameId)
-    ActiveGames.addStayActivity(gameId, playerId, 0, 0)
-    StatusCodes.NoContent
   }
 
   def updateSummary(gameId: Int, playerId: Int, summary: List[String], token: String): ToResponseMarshallable = {
     val userId = DBUtils.getIdByToken(token)
     if (!Players.checkPlayer(playerId, userId)) {
-      return StatusCodes.Forbidden
+      StatusCodes.Forbidden
+    } else if (!ActiveGames.isPlayerActive(playerId)) {
+      StatusCodes.BadRequest
+    } else {
+      if (summary.contains(nameOf(summaryConstants.redCard))) {
+        ActiveGames.deactivatePlayer(playerId)
+      }
+      ActiveGames.updateSummary(playerId, summary)
+      StatusCodes.NoContent
     }
-    if (!ActiveGames.playerDataExists(playerId)) {
-      return StatusCodes.BadRequest
-    }
-    ActiveGames.updateSummary(playerId, summary)
-    StatusCodes.NoContent
   }
 
 }

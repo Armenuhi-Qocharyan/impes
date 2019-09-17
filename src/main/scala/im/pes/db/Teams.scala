@@ -11,15 +11,19 @@ object Teams {
 
   val teamsConstants: Tables.Teams.type = Tables.Teams
   val addTeamSchema: StructType = (new StructType)
-    .add(nameOf(teamsConstants.name), DataTypes.StringType, nullable = false)
-    .add(nameOf(teamsConstants.budget), DataTypes.IntegerType, nullable = false)
-    .add(nameOf(teamsConstants.championship), DataTypes.StringType, nullable = false)
-    .add(nameOf(teamsConstants.owner), DataTypes.IntegerType, nullable = false)
+    .add(nameOf(teamsConstants.name), DataTypes.StringType)
+    .add(nameOf(teamsConstants.budget), DataTypes.IntegerType)
+    .add(nameOf(teamsConstants.championship), DataTypes.StringType)
+    .add(nameOf(teamsConstants.owner), DataTypes.IntegerType)
+  val addTeamWithDefaultSchema: StructType = addTeamSchema
+    .add(nameOf(teamsConstants.isDefault), DataTypes.BooleanType)
   val updateTeamSchema: StructType = (new StructType)
     .add(nameOf(teamsConstants.name), DataTypes.StringType)
     .add(nameOf(teamsConstants.budget), DataTypes.IntegerType)
     .add(nameOf(teamsConstants.championship), DataTypes.StringType)
     .add(nameOf(teamsConstants.owner), DataTypes.IntegerType)
+  val updateTeamWithDefaultSchema: StructType = updateTeamSchema
+    .add(nameOf(teamsConstants.isDefault), DataTypes.BooleanType)
 
   def getTeams(params: Map[String, String]): String = {
     DBUtils.getTableDataAsString(teamsConstants, params)
@@ -30,7 +34,7 @@ object Teams {
   }
 
   def addTeam(df: DataFrame): Unit = {
-    val id = DBUtils.getTable(teamsConstants, rename = false).count() + 1
+    val id = DBUtils.getTable(teamsConstants, rename = false).count + 1
     DBUtils.addDataToTable(teamsConstants.tableName,
       DBUtils.renameColumnsToDBFormat(df, teamsConstants).withColumn(teamsConstants.id, functions.lit(id))
         .withColumn(teamsConstants.championsLeague, functions.lit(false))
@@ -39,11 +43,11 @@ object Teams {
 
   def updateTeam(id: Int, updateDf: DataFrame): Unit = {
     val df = DBUtils.renameColumnsToDBFormat(updateDf, teamsConstants)
-    updateTeam(id, df.collect()(0).getValuesMap(df.columns))
+    updateTeam(id, df.first.getValuesMap(df.columns))
   }
 
   def updateTeam(id: Int, updateData: Map[String, Any]): Unit = {
-    DBUtils.updateDataInTable(id, updateData, teamsConstants.tableName)
+    DBUtils.updateDataInTableByPrimaryKey(id, updateData, teamsConstants.tableName)
   }
 
   def deleteTeam(id: Int): Unit = {
@@ -51,8 +55,11 @@ object Teams {
   }
 
   def checkTeam(id: Int, userId: Int): Boolean = {
-    !DBUtils.getTable(teamsConstants, rename = false).filter(s"${teamsConstants.id} = $id")
-      .filter(s"${teamsConstants.owner} = $userId").isEmpty
+    !DBUtils.getTableDfByPrimaryKey(teamsConstants, id).filter(s"${teamsConstants.owner} = $userId").isEmpty
+  }
+
+  def isDefaultTeam(id: Int): Boolean = {
+    !DBUtils.getTableDfByPrimaryKey(teamsConstants, id).filter(s"${teamsConstants.isDefault} = true").isEmpty
   }
 
   def getTeamData(id: Int): Row = {
@@ -61,7 +68,12 @@ object Teams {
 
   def getUserTeam(userId: Int): Row = {
     val teamDf = DBUtils.getTable(teamsConstants, rename = false).filter(s"${teamsConstants.owner} = $userId")
-    if (teamDf.isEmpty) null else teamDf.collect()(0)
+    if (teamDf.isEmpty) null else teamDf.first
+  }
+
+  def getAdminTeamId: Int = {
+    DBUtils.getTable(teamsConstants, rename = false).filter(s"${teamsConstants.owner} = ${Users.getAdminId}")
+      .select(teamsConstants.id).first.getInt(0)
   }
 
 }

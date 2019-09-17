@@ -6,7 +6,7 @@ import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.server.Route
 import im.pes.constants.{CommonConstants, Paths}
 import im.pes.db.Users
-import im.pes.db.Users.{addUserSchema, updateUserSchema}
+import im.pes.db.Users.{addUserSchema, updateUserSchema, updateUserWithRoleSchema}
 import im.pes.utils.DBUtils
 
 object UsersAPI {
@@ -56,30 +56,29 @@ object UsersAPI {
   }
 
   def addUser(user: String): ToResponseMarshallable = {
-    val userDf =
-    try {
-      DBUtils.dataToDf(addUserSchema, user)
-    } catch {
-      case _: NullPointerException => return StatusCodes.BadRequest
+    val userDf = DBUtils.dataToDf(addUserSchema, user)
+    if (userDf.first.anyNull) {
+      StatusCodes.BadRequest
+    } else {
+      //TODO check fields values
+      Users.addUser(userDf)
+      StatusCodes.OK
     }
-    //TODO check fields values
-    Users.addUser(userDf)
-    StatusCodes.OK
   }
 
   def updateUser(id: Int, updateUser: String, token: String): ToResponseMarshallable = {
     val userId = DBUtils.getIdByToken(token)
-    val updateUserDf = DBUtils.dataToDf(updateUserSchema, updateUser)
     if (DBUtils.isAdmin(userId)) {
+      val updateUserDf = DBUtils.dataToDf(updateUserWithRoleSchema, updateUser)
       //TODO check fields values
-        Users.updateUser(id, updateUserDf)
-        return StatusCodes.NoContent
-    }
-    if (userId == id) {
+      Users.updateUser(id, updateUserDf)
+      StatusCodes.NoContent
+    } else if (userId == id) {
+      val updateUserDf = DBUtils.dataToDf(updateUserSchema, updateUser)
       //TODO check what user may update
       //TODO check fields values
-        Users.updateUser(id, updateUserDf)
-        StatusCodes.NoContent
+      Users.updateUser(id, updateUserDf)
+      StatusCodes.NoContent
     } else {
       StatusCodes.Forbidden
     }

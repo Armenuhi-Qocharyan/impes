@@ -11,11 +11,11 @@ object ComingGames {
 
   val comingGamesConstants: Tables.ComingGames.type = Tables.ComingGames
   val addComingGameSchema: StructType = (new StructType)
-    .add(nameOf(comingGamesConstants.firstTeamId), DataTypes.IntegerType, nullable = false)
-    .add(nameOf(comingGamesConstants.secondTeamId), DataTypes.IntegerType, nullable = false)
-    .add(nameOf(comingGamesConstants.championship), DataTypes.StringType, nullable = false)
-    .add(nameOf(comingGamesConstants.championshipState), DataTypes.StringType, nullable = false)
-    .add(nameOf(comingGamesConstants.date), DataTypes.StringType, nullable = false)
+    .add(nameOf(comingGamesConstants.firstTeamId), DataTypes.IntegerType)
+    .add(nameOf(comingGamesConstants.secondTeamId), DataTypes.IntegerType)
+    .add(nameOf(comingGamesConstants.championship), DataTypes.StringType)
+    .add(nameOf(comingGamesConstants.championshipState), DataTypes.StringType)
+    .add(nameOf(comingGamesConstants.date), DataTypes.StringType)
   val updateComingGameSchema: StructType = (new StructType)
     .add(nameOf(comingGamesConstants.firstTeamId), DataTypes.IntegerType)
     .add(nameOf(comingGamesConstants.secondTeamId), DataTypes.IntegerType)
@@ -33,18 +33,18 @@ object ComingGames {
   }
 
   def addComingGame(df: DataFrame): Unit = {
-    val id = DBUtils.getTable(comingGamesConstants, rename = false).count() + 1
+    val id = DBUtils.getTable(comingGamesConstants, rename = false).count + 1
     DBUtils.addDataToTable(comingGamesConstants.tableName,
       DBUtils.renameColumnsToDBFormat(df, comingGamesConstants).withColumn(comingGamesConstants.id, functions.lit(id)))
   }
 
   def updateComingGame(id: Int, updateDf: DataFrame): Unit = {
     val df = DBUtils.renameColumnsToDBFormat(updateDf, comingGamesConstants)
-    updateComingGame(id, df.collect()(0).getValuesMap(df.columns))
+    updateComingGame(id, df.first.getValuesMap(df.columns))
   }
 
   def updateComingGame(id: Int, updateData: Map[String, Any]): Unit = {
-    DBUtils.updateDataInTable(id, updateData, comingGamesConstants.tableName)
+    DBUtils.updateDataInTableByPrimaryKey(id, updateData, comingGamesConstants.tableName)
   }
 
   def deleteComingGame(id: Int): Unit = {

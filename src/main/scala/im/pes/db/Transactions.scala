@@ -13,11 +13,11 @@ object Transactions {
   val playersTransactionsConstants: Tables.PlayersTransactions.type = Tables.PlayersTransactions
 
   val addTeamTransactionSchema: StructType = (new StructType)
-    .add(nameOf(teamsTransactionsConstants.teamId), DataTypes.IntegerType, nullable = false)
-    .add(nameOf(teamsTransactionsConstants.price), DataTypes.IntegerType, nullable = false)
+    .add(nameOf(teamsTransactionsConstants.teamId), DataTypes.IntegerType)
+    .add(nameOf(teamsTransactionsConstants.price), DataTypes.IntegerType)
   val addPlayerTransactionSchema: StructType = (new StructType)
-    .add(nameOf(playersTransactionsConstants.playerId), DataTypes.IntegerType, nullable = false)
-    .add(nameOf(playersTransactionsConstants.price), DataTypes.IntegerType, nullable = false)
+    .add(nameOf(playersTransactionsConstants.playerId), DataTypes.IntegerType)
+    .add(nameOf(playersTransactionsConstants.price), DataTypes.IntegerType)
 
   def getTeamsTransactions(params: Map[String, String]): String = {
     DBUtils.getTableDataAsString(teamsTransactionsConstants, params)
@@ -34,7 +34,7 @@ object Transactions {
   }
 
   def addTeamTransaction(df: DataFrame, rename: Boolean = true): Unit = {
-    val id = DBUtils.getTable(teamsTransactionsConstants, rename = false).count() + 1
+    val id = DBUtils.getTable(teamsTransactionsConstants, rename = false).count + 1
     val addDf = if (rename) DBUtils.renameColumnsToDBFormat(df, teamsTransactionsConstants) else df
     DBUtils.addDataToTable(teamsTransactionsConstants.tableName,
       addDf.withColumn(teamsTransactionsConstants.id, functions.lit(id)))
@@ -47,7 +47,7 @@ object Transactions {
   }
 
   def addPlayerTransaction(df: DataFrame, rename: Boolean = true): Unit = {
-    val id = DBUtils.getTable(playersTransactionsConstants, rename = false).count() + 1
+    val id = DBUtils.getTable(playersTransactionsConstants, rename = false).count + 1
     val addDf = if (rename) DBUtils.renameColumnsToDBFormat(df, teamsTransactionsConstants) else df
     DBUtils.addDataToTable(playersTransactionsConstants.tableName,
       addDf.withColumn(playersTransactionsConstants.id, functions.lit(id)))

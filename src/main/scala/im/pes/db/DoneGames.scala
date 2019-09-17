@@ -19,7 +19,7 @@ object DoneGames {
   }
 
   def addDoneGame(activeGameDf: DataFrame): Int = {
-    val id = DBUtils.getTable(doneGamesConstants, rename = false).count() + 1
+    val id = DBUtils.getTable(doneGamesConstants, rename = false).count + 1
     DBUtils.addDataToTable(doneGamesConstants.tableName,
       activeGameDf.withColumnRenamed(Tables.ActiveGames.firstTeamId, doneGamesConstants.firstTeamId)
         .withColumnRenamed(Tables.ActiveGames.secondTeamId, doneGamesConstants.secondTeamId)
@@ -33,11 +33,11 @@ object DoneGames {
 
   def updateDoneGame(id: Int, updateDf: DataFrame): Unit = {
     val df = DBUtils.renameColumnsToDBFormat(updateDf, doneGamesConstants)
-    updateDoneGame(id, df.collect()(0).getValuesMap(df.columns))
+    updateDoneGame(id, df.first.getValuesMap(df.columns))
   }
 
   def updateDoneGame(id: Int, updateData: Map[String, Any]): Unit = {
-    DBUtils.updateDataInTable(id, updateData, doneGamesConstants.tableName)
+    DBUtils.updateDataInTableByPrimaryKey(id, updateData, doneGamesConstants.tableName)
   }
 
 

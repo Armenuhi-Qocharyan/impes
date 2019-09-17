@@ -40,7 +40,7 @@ object TransactionsHistory {
   }
 
   def addTeamTransactionHistory(df: DataFrame, rename: Boolean = true): Unit = {
-    val id = DBUtils.getTable(teamsTransactionsHistoryConstants, rename = false).count() + 1
+    val id = DBUtils.getTable(teamsTransactionsHistoryConstants, rename = false).count + 1
     val addDf = if (rename) DBUtils.renameColumnsToDBFormat(df, teamsTransactionsHistoryConstants) else df
     DBUtils.addDataToTable(teamsTransactionsHistoryConstants.tableName,
       addDf.withColumn(teamsTransactionsHistoryConstants.id, functions.lit(id)))
@@ -54,7 +54,7 @@ object TransactionsHistory {
   }
 
   def addPlayerTransactionHistory(df: DataFrame, rename: Boolean = true): Unit = {
-    val id = DBUtils.getTable(playersTransactionsHistoryConstants, rename = false).count() + 1
+    val id = DBUtils.getTable(playersTransactionsHistoryConstants, rename = false).count + 1
     val addDf = if (rename) DBUtils.renameColumnsToDBFormat(df, playersTransactionsHistoryConstants) else df
     DBUtils.addDataToTable(playersTransactionsHistoryConstants.tableName,
       addDf.withColumn(playersTransactionsHistoryConstants.id, functions.lit(id)))

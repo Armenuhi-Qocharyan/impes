@@ -18,5 +18,6 @@ object Paths {
   val games = "games"
   val summary = "summary"
   val playersData = "playersData"
+  val replacePlayer = "replacePlayer"
 
 }

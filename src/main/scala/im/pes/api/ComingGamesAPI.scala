@@ -62,15 +62,13 @@ object ComingGamesAPI {
   def addComingGame(comingGame: String, token: String): ToResponseMarshallable = {
     if (DBUtils.isAdmin(DBUtils.getIdByToken(token))) {
       //TODO check fields values
-      val comingGameDf =
-        try {
-          DBUtils.dataToDf(addComingGameSchema, comingGame)
-        } catch {
-          case _: NullPointerException => return StatusCodes.BadRequest
-        }
-      //TODO check fields values
-      ComingGames.addComingGame(comingGameDf)
-      StatusCodes.OK
+      val comingGameDf = DBUtils.dataToDf(addComingGameSchema, comingGame)
+      if (comingGameDf.first.anyNull) {
+        StatusCodes.BadRequest
+      } else {
+        ComingGames.addComingGame(comingGameDf)
+        StatusCodes.OK
+      }
     } else {
       StatusCodes.Forbidden
     }

@@ -1,6 +1,6 @@
 package im.pes.utils
 
-import im.pes.constants.{CommonConstants, Tables}
+import im.pes.constants.{CommonConstants, Tables, UserRoles}
 import im.pes.main.spark.implicits._
 import im.pes.main.{connectionProperties, spark, stmt}
 import org.apache.spark.sql.types.StructType
@@ -9,19 +9,18 @@ import org.mindrot.jbcrypt.BCrypt
 
 object DBUtils {
 
-
   def dataToDf(schema: StructType, data: String): DataFrame = {
     spark.read.schema(schema).json(Seq(data).toDS())
   }
 
   def getTableDataAsStringByPrimaryKey(table: Tables.Table, value: Int, dropColumns: Seq[String] = Nil): String = {
     val df = getTableDfByPrimaryKey(table, value, dropColumns)
-    if (df.isEmpty) null else renameColumns(df, table).toJSON.collect()(0)
+    if (df.isEmpty) null else renameColumns(df, table).toJSON.first
   }
 
   def getTableDataByPrimaryKey(table: Tables.Table, value: Int, dropColumns: Seq[String] = Nil): Row = {
     val df = getTableDfByPrimaryKey(table, value, dropColumns)
-    if (df.isEmpty) null else df.collect()(0)
+    if (df.isEmpty) null else df.first
   }
 
   def getTableDfByPrimaryKey(table: Tables.Table, value: Int, dropColumns: Seq[String] = Nil): DataFrame = {
@@ -47,17 +46,17 @@ object DBUtils {
 
   def getTableDataByPrimaryKey(table: Tables.Table, value: Int, selectCol: String, selectCols: String*): Row = {
     val df = getTableDfByPrimaryKey(table, value)
-    if (df.isEmpty) null else df.select(selectCol, selectCols: _*).collect()(0)
+    if (df.isEmpty) null else df.select(selectCol, selectCols: _*).first
   }
 
   def getIdByToken(token: String): Int = {
     val df = getTable(Tables.Sessions, rename = false).filter(s"${Tables.Sessions.token} = '$token'")
-    if (df.isEmpty) -1 else df.select(Tables.Sessions.userId).collect()(0).getInt(0)
+    if (df.isEmpty) -1 else df.select(Tables.Sessions.userId).first.getInt(0)
   }
 
   def getSessionId(userId: Int): Int = {
     val df = getTable(Tables.Sessions, rename = false).filter(s"${Tables.Sessions.userId} = $userId")
-    if (df.isEmpty) -1 else df.select(Tables.Sessions.id).collect()(0).getInt(0)
+    if (df.isEmpty) -1 else df.select(Tables.Sessions.id).first.getInt(0)
   }
 
   def getTableDataAsString(table: Tables.Table, params: Map[String, String],
@@ -91,7 +90,11 @@ object DBUtils {
     stmt.executeUpdate(CommonConstants.sqlDeleteQuery(tableName, key, value))
   }
 
-  def updateDataInTable(id: Int, data: Map[String, Any], tableName: String): Unit = {
+  def updateDataInTableByPrimaryKey(id: Int, data: Map[String, Any], tableName: String): Unit = {
+    updateDataInTable(Tables.primaryKey, id, data, tableName)
+  }
+
+  def updateDataInTable(searchKey: String, searchValue: Int, data: Map[String, Any], tableName: String): Unit = {
     val builder = StringBuilder.newBuilder
     for (keyValue <- data.filter(_._2 != null)) {
       builder.append(keyValue._1).append(" = ")
@@ -108,12 +111,12 @@ object DBUtils {
     }
     if (builder.length() > 0) {
       builder.setLength(builder.length() - 2)
-      stmt.executeUpdate(CommonConstants.sqlUpdateQuery(tableName, builder.toString(), id))
+      stmt.executeUpdate(CommonConstants.sqlUpdateQuery(tableName, builder.toString(), searchKey, searchValue))
     }
   }
 
   def isAdmin(userId: Int): Boolean = {
-    CommonConstants.admins.contains(userId)
+    !getTableDfByPrimaryKey(Tables.Users, userId).filter(s"${Tables.Users.role} = '${UserRoles.admin}'").isEmpty
   }
 
 }

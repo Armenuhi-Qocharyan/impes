@@ -8,6 +8,11 @@ case object ActivityTypes {
   val tackle = "tackle"
 }
 
+case object UserRoles {
+  val user = "user"
+  val admin = "admin"
+}
+
 object CommonConstants {
 
   val kGameIntelligence = 1
@@ -30,25 +35,23 @@ object CommonConstants {
   val routeHost = "127.0.0.1"
   val routePort = 8080
 
-  val sqlDeleteByPrimaryKeyQuery: (String, Int) => String = (tableName: String, searchValue: Int) =>
-    s"DELETE FROM $tableName WHERE ${Tables.primaryKey} = $searchValue"
   val sqlDeleteQuery: (String, String, Int) => String = (tableName: String, searchKey: String, searchValue: Int) =>
     s"DELETE FROM $tableName WHERE $searchKey = $searchValue"
+  val sqlDeleteByPrimaryKeyQuery: (String, Int) => String = (tableName: String, searchValue: Int) =>
+    sqlDeleteQuery(tableName, Tables.primaryKey, searchValue)
   val sqlDeleteTokenQuery: String => String = (searchValue: String) =>
     s"DELETE FROM ${Tables.Sessions.tableName} WHERE ${Tables.Sessions.token} = '$searchValue'"
-  val sqlUpdateQuery: (String, String, Int) => String = (tableName: String, data: String, searchValue: Int) =>
-      s"UPDATE $tableName SET $data WHERE ${Tables.primaryKey} = $searchValue"
+  val sqlUpdateQuery: (String, String, String, Int) => String = (tableName: String, data: String, searchKey: String, searchValue: Int) =>
+    s"UPDATE $tableName SET $data WHERE $searchKey = $searchValue"
+  val sqlUpdateByPrimaryKeyQuery: (String, String, Int) => String = (tableName: String, data: String, searchValue: Int) =>
+    sqlUpdateQuery(tableName, data, Tables.primaryKey, searchValue)
   val sqlUpdateAppendToJsonArrayQuery: (String, String, String, String, Int) => String =
     (tableName: String, key: String, data: String, searchKey: String, searchValue: Int) =>
-      s"UPDATE $tableName SET $key = JSON_ARRAY_APPEND($key, '$$', CAST('$data' as JSON)) WHERE $searchKey = $searchValue"
+      sqlUpdateQuery(tableName, s"$key = JSON_ARRAY_APPEND($key, '$$', CAST('$data' as JSON))", searchKey, searchValue)
   val sqlUpdateReplaceJsonQuery: (String, String, String, String, Int) => String =
     (tableName: String, key: String, replaceData: String, searchKey: String, searchValue: Int) =>
-    s"UPDATE $tableName SET $key = JSON_REPLACE($key$replaceData) WHERE $searchKey = $searchValue"
+      sqlUpdateQuery(tableName, s" $key = JSON_REPLACE($key$replaceData)", searchKey, searchValue)
   val jsonExtractFormat: (String, String) => String = (data: String, key: String) => s"JSON_EXTRACT($data, '$$.$key')"
-
-  val admins: Seq[Int] = Seq(1)
-  val defaultTeams: Seq[Int] = Seq(1)
-  val defaultPlayers: Seq[Int] = Seq(1)
 
   val token = "Token"
 

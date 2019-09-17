@@ -16,6 +16,7 @@ object Tables {
     val age = "age"
     val name = "name"
     val budget = "budget"
+    val role = "role"
   }
 
   case object Sessions extends Table {
@@ -34,6 +35,7 @@ object Tables {
     val championsLeague = "champions_league"
     val isUsed = "is_used"
     val owner = "owner"
+    val isDefault = "isDefault"
   }
 
   case object Players extends Table {
@@ -51,6 +53,7 @@ object Tables {
     val gameIntelligence = "game_intelligence"
     val teamPlayer = "team_player"
     val physique = "physique"
+    val isDefault = "isDefault"
   }
 
   case object DoneGames extends Table {
@@ -163,7 +166,15 @@ object Tables {
     val id = "id"
     val gameId = "gameId"
     val playerId = "playerId"
+    val active = "active"
     val summary = "summary"
+  }
+
+  case object ActiveGamesReservePlayers extends Table {
+    override val tableName = "active_games_reserve_players"
+    val id = "id"
+    val gameId = "gameId"
+    val playerId = "playerId"
   }
 
   case object Activities extends Table {

@@ -20,15 +20,13 @@ object main {
 
   val connectionProperties = new Properties()
   val spark: SparkSession = SparkSession.builder().appName("Spark SQL").config("spark.master", "local").getOrCreate()
-  var conn: Connection = _
-  var stmt: Statement = _
+  lazy val conn: Connection = DriverManager.getConnection(CommonConstants.jdbcUrl, connectionProperties)
+  lazy val stmt: Statement = conn.createStatement()
 
   def main(args: Array[String]) {
     connectionProperties.setProperty("Driver", CommonConstants.driverClass)
     connectionProperties.put("user", args(0))
     connectionProperties.put("password", args(1))
-    conn = DriverManager.getConnection(CommonConstants.jdbcUrl, connectionProperties)
-    stmt = conn.createStatement()
     implicit val system: ActorSystem = ActorSystem()
     implicit val materializer: ActorMaterializer = ActorMaterializer()
     implicit val executionContext: ExecutionContextExecutor = system.dispatcher

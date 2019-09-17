@@ -7,9 +7,10 @@ import akka.http.scaladsl.server.Route
 import com.github.dwickern.macros.NameOf.nameOf
 import im.pes.constants.{CommonConstants, Paths}
 import im.pes.db.{Players, Teams, Transactions, Users}
-import im.pes.db.Teams.{addTeamSchema, teamsConstants, updateTeamSchema}
+import im.pes.db.Teams.{addTeamSchema, addTeamWithDefaultSchema, teamsConstants, updateTeamSchema, updateTeamWithDefaultSchema}
 import im.pes.db.Users.usersConstants
 import im.pes.utils.DBUtils
+import org.apache.spark.sql.functions
 
 object TeamsAPI {
 
@@ -61,24 +62,26 @@ object TeamsAPI {
 
   def addTeam(team: String, token: String): ToResponseMarshallable = {
     val userId = DBUtils.getIdByToken(token)
-    val teamDf =
-      try {
-        DBUtils.dataToDf(addTeamSchema, team)
-      } catch {
-        case _: NullPointerException => return StatusCodes.BadRequest
-      }
-    val teamData = teamDf.collect()(0)
-    if (userId == teamData.getAs[Int](nameOf(teamsConstants.owner))) {
+    val teamDf = if (DBUtils.isAdmin(userId)) {
+      DBUtils.dataToDf(addTeamWithDefaultSchema, team)
+    } else {
+      DBUtils.dataToDf(addTeamSchema, team).withColumn(nameOf(teamsConstants.isDefault), functions.lit(false))
+    }
+    val teamData = teamDf.first
+    if (teamData.anyNull) {
+      StatusCodes.BadRequest
+    } else if (userId == teamData.getAs[Int](nameOf(teamsConstants.owner))) {
       //TODO check fields values
       val user = Users.getUserData(userId)
       val teamBudget = teamData.getAs[Int](nameOf(teamsConstants.budget))
       val userBudget = user.getAs[Int](usersConstants.budget)
       if (null == user || teamBudget > userBudget) {
-        return StatusCodes.BadRequest
+        StatusCodes.BadRequest
+      } else {
+        Teams.addTeam(teamDf)
+        Users.updateUser(userId, Map(usersConstants.budget -> (userBudget - teamBudget)))
+        StatusCodes.OK
       }
-      Teams.addTeam(teamDf)
-      Users.updateUser(userId, Map(usersConstants.budget -> (userBudget - teamBudget)))
-      StatusCodes.OK
     } else {
       StatusCodes.Forbidden
     }
@@ -86,22 +89,23 @@ object TeamsAPI {
 
   def updateTeam(id: Int, updateTeam: String, token: String): ToResponseMarshallable = {
     val userId = DBUtils.getIdByToken(token)
-    val updateTeamDf = DBUtils.dataToDf(updateTeamSchema, updateTeam)
     if (DBUtils.isAdmin(userId)) {
+      val updateTeamDf = DBUtils.dataToDf(updateTeamWithDefaultSchema, updateTeam)
       //TODO check fields values
-      Teams.updateTeam(id, updateTeamDf)
-      return StatusCodes.NoContent
-    }
-    if (Teams.checkTeam(id, userId)) {
-      //TODO check what user may update
-      //TODO check fields values
-      val updateTeamData = updateTeamDf.collect()(0)
-      val owner = Option(updateTeamData.getAs[Int](nameOf(teamsConstants.owner)))
-      if (owner.isDefined && owner.get != userId) {
-        return StatusCodes.BadRequest
-      }
       Teams.updateTeam(id, updateTeamDf)
       StatusCodes.NoContent
+    } else if (Teams.checkTeam(id, userId)) {
+      val updateTeamDf = DBUtils.dataToDf(updateTeamSchema, updateTeam)
+      //TODO check what user may update
+      //TODO check fields values
+      val updateTeamData = updateTeamDf.first
+      val owner = Option(updateTeamData.getAs[Int](nameOf(teamsConstants.owner)))
+      if (owner.isDefined && owner.get != userId) {
+        StatusCodes.BadRequest
+      } else {
+        Teams.updateTeam(id, updateTeamDf)
+        StatusCodes.NoContent
+      }
     } else {
       StatusCodes.Forbidden
     }
@@ -117,9 +121,9 @@ object TeamsAPI {
       }
     }
     if (Teams.checkTeam(id, userId)) {
-      if (CommonConstants.defaultTeams.contains(id)) {
+      if (Teams.isDefaultTeam(id)) {
         val team = Teams.getTeamData(id)
-        Teams.updateTeam(id, Map(teamsConstants.owner -> CommonConstants.admins.head))
+        Teams.updateTeam(id, Map(teamsConstants.owner -> Users.getAdminId))
         Transactions.addTeamTransaction(id, team.getAs(teamsConstants.budget))
       } else {
         for (player <- Players.getTeamPlayers(id)) {

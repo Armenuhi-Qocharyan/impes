@@ -27,7 +27,7 @@ object Statistics {
   }
 
   def addTeamStatistics(teamId: Int, doneGameId: Int, teamData: scala.collection.mutable.Map[String, Int]): Unit = {
-    val id = DBUtils.getTable(teamsStatisticsConstants, rename = false).count() + 1
+    val id = DBUtils.getTable(teamsStatisticsConstants, rename = false).count + 1
     val data = Seq((id, teamId, doneGameId, teamData(teamsStatisticsConstants.goals), teamData(
       teamsStatisticsConstants.possession), teamData(teamsStatisticsConstants.yellowCards), teamData(
       teamsStatisticsConstants.redCards), teamData(teamsStatisticsConstants.falls), teamData(
@@ -40,7 +40,7 @@ object Statistics {
   }
 
   def addPlayerStatistics(playerId: Int, teamId: Int, doneGameId: Int, df: DataFrame): Unit = {
-    val id = DBUtils.getTable(playersStatisticsConstants, rename = false).count() + 1
+    val id = DBUtils.getTable(playersStatisticsConstants, rename = false).count + 1
     DBUtils.addDataToTable(playersStatisticsConstants.tableName,
       df.withColumn(playersStatisticsConstants.id, functions.lit(id))
         .withColumn(playersStatisticsConstants.playerId, functions.lit(playerId))
