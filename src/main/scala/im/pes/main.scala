@@ -35,7 +35,7 @@ object main {
 
     val route = UsersAPI.getRoute ~ TeamsAPI.getRoute ~ DoneGamesAPI.getRoute ~ ComingGamesAPI.getRoute ~
       PlayersAPI.getRoute ~ LoginAPI.getRoute ~ LogoutAPI.getRoute ~ StatisticsAPI.getRoute ~ TransactionsAPI.getRoute ~
-      TransactionsHistoryAPI.getRoute ~ ActiveGamesAPI.getRoute ~ ActiveGameAPI.getRoute
+      TransactionsHistoryAPI.getRoute ~ ActiveGamesAPI.getRoute ~ ActiveGameAPI.getRoute ~ LobbiesAPI.getRoute
     val bindingFuture = Http().bindAndHandle(route, CommonConstants.routeHost, CommonConstants.routePort)
     println(s"\nServer running on ${CommonConstants.routeHost}:${CommonConstants.routePort}\nhit RETURN to terminate")
     StdIn.readLine()

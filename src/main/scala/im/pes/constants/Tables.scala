@@ -131,7 +131,6 @@ object Tables {
     val price = "price"
   }
 
-
   case object TeamsTransactionsHistory extends Table {
     override val tableName = "teams_transactions_history"
     val id = "id"
@@ -155,10 +154,17 @@ object Tables {
   case object ActiveGames extends Table {
     override val tableName = "active_games"
     val id = "id"
-    val firstTeamId = "firstTeamId"
-    val secondTeamId = "secondTeamId"
     val championship = "championship"
     val championshipState = "championshipState"
+    val startTimestamp = "startTimestamp"
+  }
+
+  case object ActiveGamesTeamsData extends Table {
+    override val tableName = "active_games_teams_data"
+    val id = "id"
+    val gameId = "gameId"
+    val teamId = "teamId"
+    val isReady = "isReady"
   }
 
   case object ActiveGamesPlayersData extends Table {
@@ -192,6 +198,20 @@ object Tables {
     val timestamp = "timestamp"
   }
 
+  case object Lobbies extends Table {
+    override val tableName = "lobbies"
+    val id = "id"
+    val owner = "owner"
+    val gameId = "gameId"
+  }
+
+  case object LobbiesTeams extends Table {
+    override val tableName = "lobbies_teams"
+    val id = "id"
+    val lobbyId = "lobbyId"
+    val teamId = "teamId"
+  }
+
   case object Summary {
     val goals = "goals"
     val donePasses = "donePasses"
@@ -210,17 +230,6 @@ object Tables {
     val mileage = "mileage"
     val yellowCards = "yellowCards"
     val redCard = "redCard"
-  }
-
-  case object AddActiveGameData {
-    val firstTeamId = "firstTeamId"
-    val secondTeamId = "secondTeamId"
-    val firstTeamPlayers = "firstTeamPlayers"
-    val secondTeamPlayers = "secondTeamPlayers"
-    val championship = "championship"
-    val championshipState = "championshipState"
-    val playerId = "playerId"
-    val playerState = "playerState"
   }
 
 }

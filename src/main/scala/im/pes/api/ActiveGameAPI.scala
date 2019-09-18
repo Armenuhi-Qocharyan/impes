@@ -8,7 +8,7 @@ import akka.http.scaladsl.server.Route
 import com.github.dwickern.macros.NameOf.nameOf
 import im.pes.constants.{ActivityTypes, CommonConstants, Paths}
 import im.pes.db.ActiveGames._
-import im.pes.db.{ActiveGames, Players}
+import im.pes.db.{ActiveGames, Lobbies, Players, Teams}
 import im.pes.utils.DBUtils
 import spray.json.DefaultJsonProtocol
 
@@ -19,6 +19,13 @@ object ActiveGameAPI extends SprayJsonSupport with DefaultJsonProtocol {
     path(Paths.games / IntNumber / Paths.playersData) { gameId =>
       get {
         complete(getActiveGamePlayersData(gameId))
+      } ~
+      post {
+        headerValueByName(CommonConstants.token) { token =>
+          entity(as[String]) { players =>
+            complete(addTeamPlayers(gameId, players, token))
+          }
+        }
       }
     } ~
       path(Paths.games / IntNumber / Paths.playersData / IntNumber) { (gameId, activityId) =>
@@ -87,7 +94,35 @@ object ActiveGameAPI extends SprayJsonSupport with DefaultJsonProtocol {
     }
   }
 
-  def replacePlayer(gameId: Int, replacePlayerId: Int, replaceToPlayerId: Int, token: String): ToResponseMarshallable = {
+  def addTeamPlayers(gameId: Int, teamPlayers: String, token: String): ToResponseMarshallable = {
+    val teamPlayersDf = DBUtils.dataToDf(addTeamPlayersSchema, teamPlayers).na.drop()
+    val teamId = Teams.getUserTeamId(DBUtils.getIdByToken(token))
+    if (ActiveGames.isActiveGameTeamNotReady(gameId, teamId)) {
+      for (teamPlayer <- teamPlayersDf.collect()) {
+        val playerId = teamPlayer.getAs[Int](nameOf(activeGamesPlayersDataConstants.playerId))
+        val playerState = teamPlayer.getAs[String](ActiveGames.playerState)
+        //TODO check player in team
+        if (playerState.equals("reserve")) {
+          ActiveGames.addActiveGameReservePlayer(gameId, playerId)
+        } else {
+          ActiveGames.addActiveGamePlayerData(gameId, playerId)
+          //TODO get x and y according to the player state
+          ActiveGames.addStayActivity(gameId, playerId, 0, 0)
+        }
+      }
+      ActiveGames.updateActiveGameTeam(teamId, Map(activeGamesTeamsDataConstants.isReady -> true))
+      if (ActiveGames.activeGameTeamsReady(gameId)) {
+        Lobbies.deleteGameLobby(gameId)
+        ActiveGames.updateActiveGame(gameId, Map(activeGamesConstants.startTimestamp -> System.currentTimeMillis()))
+      }
+      StatusCodes.OK
+    } else {
+      StatusCodes.BadRequest
+    }
+  }
+
+  def replacePlayer(gameId: Int, replacePlayerId: Int, replaceToPlayerId: Int,
+                    token: String): ToResponseMarshallable = {
     val userId = DBUtils.getIdByToken(token)
     if (!Players.checkPlayer(replacePlayerId, userId) || !Players.checkPlayer(replaceToPlayerId, userId)) {
       StatusCodes.Forbidden

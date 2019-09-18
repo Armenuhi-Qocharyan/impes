@@ -71,9 +71,13 @@ object Teams {
     if (teamDf.isEmpty) null else teamDf.first
   }
 
+  def getUserTeamId(userId: Int): Int = {
+    val teamDf = DBUtils.getTable(teamsConstants, rename = false).filter(s"${teamsConstants.owner} = $userId")
+    if (teamDf.isEmpty) -1 else teamDf.select(teamsConstants.id).first.getInt(0)
+  }
+
   def getAdminTeamId: Int = {
-    DBUtils.getTable(teamsConstants, rename = false).filter(s"${teamsConstants.owner} = ${Users.getAdminId}")
-      .select(teamsConstants.id).first.getInt(0)
+    getUserTeamId(Users.getAdminId)
   }
 
 }

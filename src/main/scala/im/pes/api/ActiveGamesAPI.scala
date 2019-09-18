@@ -4,9 +4,8 @@ import akka.http.scaladsl.marshalling.ToResponseMarshallable
 import akka.http.scaladsl.model.StatusCodes
 import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.server.Route
-import com.github.dwickern.macros.NameOf.nameOf
 import im.pes.constants.{Paths, Tables}
-import im.pes.db.ActiveGames.{activeGamesConstants, addActiveGameConstants, addActiveGameSchema, summarySchema}
+import im.pes.db.ActiveGames.{addActiveGameSchema, summarySchema}
 import im.pes.db.{ActiveGames, DoneGames, Players, Statistics}
 import im.pes.utils.DBUtils
 import org.apache.spark.sql.Row
@@ -55,28 +54,7 @@ object ActiveGamesAPI {
     if (addGameData.anyNull) {
       StatusCodes.BadRequest
     } else {
-      val gameId = ActiveGames.addActiveGame(
-        addGameDf
-          .drop(nameOf(addActiveGameConstants.firstTeamPlayers), nameOf(addActiveGameConstants.secondTeamPlayers)))
-      addTeamPlayers(gameId, addGameData.getAs[Seq[Row]](nameOf(addActiveGameConstants.firstTeamPlayers)))
-      addTeamPlayers(gameId, addGameData.getAs[Seq[Row]](nameOf(addActiveGameConstants.secondTeamPlayers)))
-      StatusCodes.OK
-    }
-  }
-
-  def addTeamPlayers(gameId: Int, teamPlayers: Seq[Row]): Unit = {
-    for (teamPlayer <- teamPlayers) {
-      if (!teamPlayer.anyNull) {
-        val playerId = teamPlayer.getAs[Int](addActiveGameConstants.playerId)
-        //TODO check player in team
-        if (teamPlayer.getAs[String](addActiveGameConstants.playerState).equals("reserve")) {
-          ActiveGames.addActiveGameReservePlayer(gameId, playerId)
-        } else {
-          ActiveGames.addActiveGamePlayerData(gameId, playerId)
-          //TODO get x and y according to the player state
-          ActiveGames.addStayActivity(gameId, playerId, 0, 0)
-        }
-      }
+      ActiveGames.addActiveGame(addGameDf).toString
     }
   }
 
@@ -93,10 +71,8 @@ object ActiveGamesAPI {
     if (activeGameDf.isEmpty) {
       StatusCodes.BadRequest
     } else {
-      val activeGame = activeGameDf.first
-      val firstTeamId = activeGame.getAs[Int](activeGamesConstants.firstTeamId)
-      val secondTeamId = activeGame.getAs[Int](activeGamesConstants.secondTeamId)
-      val doneGameId = DoneGames.addDoneGame(activeGameDf)
+      val teamsIds = ActiveGames.getActiveGameTeamsIds(id)
+      val doneGameId = DoneGames.addDoneGame(teamsIds.head, teamsIds(1), activeGameDf)
       for (gamePlayer <- ActiveGames.getGamePlayers(id)) {
         val playerId = gamePlayer.getAs[Int](Tables.ActiveGamesPlayersData.playerId)
         val teamId = Players.getPlayerTeamId(playerId)
@@ -104,15 +80,15 @@ object ActiveGamesAPI {
         Statistics.addPlayerStatistics(playerId, teamId, doneGameId, summaryDf)
         val summaryData = summaryDf.first
         Players.updatePlayer(playerId, summaryData)
-        if (teamId == firstTeamId) collectTeamData(firstTeamData, summaryData) else collectTeamData(secondTeamData,
+        if (teamId == teamsIds.head) collectTeamData(firstTeamData, summaryData) else collectTeamData(secondTeamData,
           summaryData)
       }
       ActiveGames.deleteActiveGame(id)
       DoneGames.updateDoneGame(doneGameId,
         Map(Tables.DoneGames.firstTeamGoals -> firstTeamData(Tables.TeamsStatistics.goals),
           Tables.DoneGames.secondTeamGoals -> secondTeamData(Tables.TeamsStatistics.goals)))
-      Statistics.addTeamStatistics(firstTeamId, doneGameId, firstTeamData)
-      Statistics.addTeamStatistics(secondTeamId, doneGameId, secondTeamData)
+      Statistics.addTeamStatistics(teamsIds.head, doneGameId, firstTeamData)
+      Statistics.addTeamStatistics(teamsIds(1), doneGameId, secondTeamData)
       StatusCodes.OK
     }
   }

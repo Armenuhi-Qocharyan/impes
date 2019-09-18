@@ -18,11 +18,12 @@ object DoneGames {
     DBUtils.getTableDataAsStringByPrimaryKey(doneGamesConstants, id)
   }
 
-  def addDoneGame(activeGameDf: DataFrame): Int = {
+  def addDoneGame(firstTeamId: Int, secondTeamId: Int, activeGameDf: DataFrame): Int = {
     val id = DBUtils.getTable(doneGamesConstants, rename = false).count + 1
     DBUtils.addDataToTable(doneGamesConstants.tableName,
-      activeGameDf.withColumnRenamed(Tables.ActiveGames.firstTeamId, doneGamesConstants.firstTeamId)
-        .withColumnRenamed(Tables.ActiveGames.secondTeamId, doneGamesConstants.secondTeamId)
+      activeGameDf.drop(Tables.ActiveGames.startTimestamp)
+        .withColumn(doneGamesConstants.firstTeamId, functions.lit(firstTeamId))
+        .withColumn(doneGamesConstants.secondTeamId, functions.lit(secondTeamId))
         .withColumnRenamed(Tables.ActiveGames.championshipState, doneGamesConstants.championshipState)
         .withColumn(doneGamesConstants.id, functions.lit(id))
         .withColumn(doneGamesConstants.firstTeamGoals, functions.lit(0))

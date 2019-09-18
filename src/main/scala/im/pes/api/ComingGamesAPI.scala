@@ -19,11 +19,9 @@ object ComingGamesAPI {
         }
       } ~
         post {
-          path(Paths.comingGames) {
-            entity(as[String]) { comingGame =>
-              headerValueByName(CommonConstants.token) { token =>
-                complete(addComingGame(comingGame, token))
-              }
+          entity(as[String]) { comingGame =>
+            headerValueByName(CommonConstants.token) { token =>
+              complete(addComingGame(comingGame, token))
             }
           }
         }

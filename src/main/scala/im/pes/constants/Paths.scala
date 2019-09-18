@@ -19,5 +19,9 @@ object Paths {
   val summary = "summary"
   val playersData = "playersData"
   val replacePlayer = "replacePlayer"
+  val lobbies = "lobbies"
+  val confirm = "confirm"
+  val reject = "reject"
+  val leave = "leave"
 
 }

@@ -22,5 +22,4 @@ libraryDependencies ++= Seq(
   "org.xerial" % "sqlite-jdbc" % "3.16.1",
   "org.mindrot"  % "jbcrypt"   % "0.4",
   "com.github.dwickern" %% "scala-nameof" % "1.0.3" % "provided"
-
 )
