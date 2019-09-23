@@ -14,7 +14,7 @@ object DoneGames {
     DBUtils.getTableDataAsString(doneGamesConstants, params)
   }
 
-  def getDoneGame(id: Int): String = {
+  def getDoneGame(id: Int): Option[String] = {
     DBUtils.getTableDataAsStringByPrimaryKey(doneGamesConstants, id)
   }
 

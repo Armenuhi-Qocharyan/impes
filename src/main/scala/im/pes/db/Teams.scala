@@ -29,7 +29,7 @@ object Teams {
     DBUtils.getTableDataAsString(teamsConstants, params)
   }
 
-  def getTeam(id: Int): String = {
+  def getTeam(id: Int): Option[String] = {
     DBUtils.getTableDataAsStringByPrimaryKey(teamsConstants, id)
   }
 
@@ -52,6 +52,7 @@ object Teams {
 
   def deleteTeam(id: Int): Unit = {
     DBUtils.deleteDataFromTable(teamsConstants.tableName, id)
+    Transactions.deleteTeamTransactionByTeamId(id)
   }
 
   def checkTeam(id: Int, userId: Int): Boolean = {
@@ -62,22 +63,22 @@ object Teams {
     !DBUtils.getTableDfByPrimaryKey(teamsConstants, id).filter(s"${teamsConstants.isDefault} = true").isEmpty
   }
 
-  def getTeamData(id: Int): Row = {
+  def getTeamData(id: Int): Option[Row] = {
     DBUtils.getTableDataByPrimaryKey(teamsConstants, id)
   }
 
-  def getUserTeam(userId: Int): Row = {
+  def getUserTeam(userId: Int): Option[Row] = {
     val teamDf = DBUtils.getTable(teamsConstants, rename = false).filter(s"${teamsConstants.owner} = $userId")
-    if (teamDf.isEmpty) null else teamDf.first
+    if (teamDf.isEmpty) None else Option(teamDf.first)
   }
 
-  def getUserTeamId(userId: Int): Int = {
+  def getUserTeamId(userId: Int): Option[Int] = {
     val teamDf = DBUtils.getTable(teamsConstants, rename = false).filter(s"${teamsConstants.owner} = $userId")
-    if (teamDf.isEmpty) -1 else teamDf.select(teamsConstants.id).first.getInt(0)
+    if (teamDf.isEmpty) None else Option(teamDf.select(teamsConstants.id).first.getInt(0))
   }
 
   def getAdminTeamId: Int = {
-    getUserTeamId(Users.getAdminId)
+    getUserTeamId(Users.getAdminId).get
   }
 
 }

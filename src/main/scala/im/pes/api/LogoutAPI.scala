@@ -20,7 +20,7 @@ object LogoutAPI {
     }
 
   def logout(token: String): ToResponseMarshallable = {
-    if (-1 == DBUtils.getIdByToken(token)) {
+    if (DBUtils.getIdByToken(token).isEmpty) {
       StatusCodes.Unauthorized
     } else {
       Sessions.deleteSession(token)

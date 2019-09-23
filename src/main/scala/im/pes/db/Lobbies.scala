@@ -17,7 +17,7 @@ object Lobbies {
     DBUtils.getTableDataAsString(lobbiesConstants, params)
   }
 
-  def getLobby(id: Int): String = {
+  def getLobby(id: Int): Option[String] = {
     DBUtils.getTableDataAsStringByPrimaryKey(lobbiesConstants, id)
   }
 
@@ -59,6 +59,10 @@ object Lobbies {
   def checkTeamInLobby(id: Int, teamId: Int): Boolean = {
     !DBUtils.getTable(lobbiesTeamsConstants, rename = false).filter(s"${lobbiesTeamsConstants.lobbyId} = $id")
       .filter(s"${lobbiesTeamsConstants.teamId} = $teamId").isEmpty
+  }
+
+  def isTeamInLobby(teamId: Int): Boolean = {
+    !DBUtils.getTable(lobbiesTeamsConstants, rename = false).filter(s"${lobbiesTeamsConstants.teamId} = $teamId").isEmpty
   }
 
   def isLobbyFull(id: Int): Boolean = {

@@ -6,9 +6,9 @@ import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.server.Route
 import com.github.dwickern.macros.NameOf.nameOf
 import im.pes.constants.{CommonConstants, Paths}
-import im.pes.db.Players.{addPlayerSchema, addPlayerWithDefaultSchema, playersConstants, updatePlayerSchema, updatePlayerWithDefaultSchema}
+import im.pes.db.Players._
 import im.pes.db.Teams.teamsConstants
-import im.pes.db.{Players, Teams}
+import im.pes.db.{ActiveGames, Players, Teams, Transactions}
 import im.pes.utils.DBUtils
 import org.apache.spark.sql.functions
 
@@ -31,7 +31,9 @@ object PlayersAPI {
     } ~
       path(Paths.players / IntNumber) { id =>
         get {
-          complete(getPlayer(id))
+          rejectEmptyResponse {
+            complete(getPlayer(id))
+          }
         } ~
           delete {
             headerValueByName(CommonConstants.token) { token =>
@@ -53,16 +55,11 @@ object PlayersAPI {
   }
 
   def getPlayer(id: Int): ToResponseMarshallable = {
-    val player = Players.getPlayer(id)
-    if (null == player) {
-      StatusCodes.NotFound
-    } else {
-      player
-    }
+    Players.getPlayer(id)
   }
 
   def addPlayer(player: String, token: String): ToResponseMarshallable = {
-    val userId = DBUtils.getIdByToken(token)
+    val userId = DBUtils.getIdByToken(token).getOrElse(return StatusCodes.Unauthorized)
     val playerDf = if (DBUtils.isAdmin(userId)) {
       DBUtils.dataToDf(addPlayerWithDefaultSchema, player)
     } else {
@@ -76,8 +73,7 @@ object PlayersAPI {
     if (Teams.checkTeam(teamId, userId)) {
       //TODO check fields values
       val teamData = Teams.getTeamData(teamId)
-      val teamBudget = if (null == teamData) return StatusCodes.BadRequest else teamData
-        .getAs[Int](nameOf(teamsConstants.budget))
+      val teamBudget = teamData.getOrElse(return StatusCodes.BadRequest).getAs[Int](nameOf(teamsConstants.budget))
       val skills = Players.calculateSkills(playerData.getAs[Int](nameOf(playersConstants.gameIntelligence)),
         playerData.getAs[Int](nameOf(playersConstants.teamPlayer)),
         playerData.getAs[Int](nameOf(playersConstants.physique)))
@@ -93,17 +89,21 @@ object PlayersAPI {
 
   def updatePlayer(id: Int, updatePlayer: String, token: String): ToResponseMarshallable = {
     val userId = DBUtils.getIdByToken(token)
-    if (DBUtils.isAdmin(userId)) {
+    if (userId.isEmpty) {
+      StatusCodes.Unauthorized
+    } else if (!Players.checkPlayerExist(id)) {
+      StatusCodes.BadRequest
+    } else if (DBUtils.isAdmin(userId.get)) {
       val updateTeamDf = DBUtils.dataToDf(updatePlayerWithDefaultSchema, updatePlayer)
       //TODO check fields values
       Players.updatePlayer(id, updateTeamDf)
       StatusCodes.OK
-    } else if (Players.checkPlayer(id, userId)) {
+    } else if (Players.checkPlayer(id, userId.get)) {
       val updateTeamDf = DBUtils.dataToDf(updatePlayerSchema, updatePlayer)
       val teamId = Option(updateTeamDf.first.getAs[Int](nameOf(playersConstants.teamId)))
       //TODO check fields values
       //TODO check what user may update
-      if (teamId.isDefined && teamId.get != Players.getPlayerData(id).getAs[Int](playersConstants.teamId)) {
+      if (teamId.isDefined) {
         StatusCodes.BadRequest
       } else {
         Players.updatePlayer(id, updateTeamDf)
@@ -117,18 +117,33 @@ object PlayersAPI {
   def deletePlayer(id: Int, token: String): ToResponseMarshallable = {
     //TODO check championship state
     val userId = DBUtils.getIdByToken(token)
-    if (DBUtils.isAdmin(userId)) {
+    if (userId.isEmpty) {
+      StatusCodes.Unauthorized
+    } else if (ActiveGames.isPlayerInGame(id)) {
+      StatusCodes.Conflict
+    } else if (DBUtils.isAdmin(userId.get)) {
       Players.deletePlayer(id)
       StatusCodes.OK
-    } else if (Players.checkPlayer(id, userId)) {
-      val playerData = Players.getPlayerData(id)
-      val teamData = Teams.getTeamData(playerData.getAs[Int](playersConstants.teamId))
-      Teams.updateTeam(teamData.getAs[Int](teamsConstants.id),
-        Map(teamsConstants.budget -> (teamData.getAs[Int](teamsConstants.budget) + CommonConstants.playerMinCost)))
-      Players.deletePlayer(id, playerData.getAs[Int](playersConstants.cost))
-      StatusCodes.OK
     } else {
-      StatusCodes.Forbidden
+      val playerData = Players.getPlayerData(id).getOrElse(return StatusCodes.BadRequest)
+      val teamData = Teams.getTeamData(playerData.getAs[Int](playersConstants.teamId))
+      if (teamData.isEmpty) {
+        Players.deletePlayer(id)
+        StatusCodes.OK
+      } else if (teamData.get.getAs[Int](teamsConstants.owner) == userId.get) {
+        val teamId = teamData.get.getAs[Int](teamsConstants.id)
+        if (Transactions.checkTeamTransaction(teamId)) {
+          StatusCodes.Conflict
+        } else {
+          Teams.updateTeam(teamData.get.getAs[Int](teamsConstants.id),
+            Map(teamsConstants.budget ->
+              (teamData.get.getAs[Int](teamsConstants.budget) + CommonConstants.playerMinCost)))
+          Players.deletePlayer(id, playerData.getAs[Int](playersConstants.cost))
+          StatusCodes.OK
+        }
+      } else {
+        StatusCodes.Forbidden
+      }
     }
   }
 

@@ -1,7 +1,6 @@
 package im.pes.api
 
 import akka.http.scaladsl.marshalling.ToResponseMarshallable
-import akka.http.scaladsl.model.StatusCodes
 import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.server.Route
 import im.pes.constants.Paths
@@ -27,12 +26,16 @@ object StatisticsAPI {
       } ~
       path(Paths.teamsStatistics / IntNumber) { id =>
         get {
-          complete(getTeamStatistics(id))
+          rejectEmptyResponse {
+            complete(getTeamStatistics(id))
+          }
         }
       } ~
       path(Paths.playersStatistics / IntNumber) { id =>
         get {
-          complete(getPlayerStatistics(id))
+          rejectEmptyResponse {
+            complete(getPlayerStatistics(id))
+          }
         }
       }
 
@@ -41,12 +44,7 @@ object StatisticsAPI {
   }
 
   def getTeamStatistics(id: Int): ToResponseMarshallable = {
-    val teamStatistics = Statistics.getTeamStatistics(id)
-    if (null == teamStatistics) {
-      StatusCodes.NotFound
-    } else {
-      teamStatistics
-    }
+    Statistics.getTeamStatistics(id)
   }
 
   def getPlayersStatistics(params: Map[String, String]): ToResponseMarshallable = {
@@ -54,12 +52,7 @@ object StatisticsAPI {
   }
 
   def getPlayerStatistics(id: Int): ToResponseMarshallable = {
-    val playerStatistics = Statistics.getPlayerStatistics(id)
-    if (null == playerStatistics) {
-      StatusCodes.NotFound
-    } else {
-      playerStatistics
-    }
+    Statistics.getPlayerStatistics(id)
   }
 
 }

@@ -13,14 +13,19 @@ object DBUtils {
     spark.read.schema(schema).json(Seq(data).toDS())
   }
 
-  def getTableDataAsStringByPrimaryKey(table: Tables.Table, value: Int, dropColumns: Seq[String] = Nil): String = {
+  def getTableDataAsStringByPrimaryKey(table: Tables.Table, value: Int, dropColumns: Seq[String] = Nil): Option[String] = {
     val df = getTableDfByPrimaryKey(table, value, dropColumns)
-    if (df.isEmpty) null else renameColumns(df, table).toJSON.first
+    if (df.isEmpty) None else Option(renameColumns(df, table).toJSON.first)
+}
+
+  def getTableDataByPrimaryKey(table: Tables.Table, value: Int, dropColumns: Seq[String] = Nil): Option[Row] = {
+    val df = getTableDfByPrimaryKey(table, value, dropColumns)
+    if (df.isEmpty) None else  Option(df.first)
   }
 
-  def getTableDataByPrimaryKey(table: Tables.Table, value: Int, dropColumns: Seq[String] = Nil): Row = {
-    val df = getTableDfByPrimaryKey(table, value, dropColumns)
-    if (df.isEmpty) null else df.first
+  def getTableDataByPrimaryKey(table: Tables.Table, value: Int, selectCol: String, selectCols: String*): Option[Row] = {
+    val df = getTableDfByPrimaryKey(table, value)
+    if (df.isEmpty) None else Option(df.select(selectCol, selectCols: _*).first)
   }
 
   def getTableDfByPrimaryKey(table: Tables.Table, value: Int, dropColumns: Seq[String] = Nil): DataFrame = {
@@ -37,6 +42,10 @@ object DBUtils {
     }
   }
 
+  def checkDataExist(table: Tables.Table, id: Int): Boolean = {
+    !getTableDfByPrimaryKey(table, id).isEmpty
+  }
+
   def renameColumns(dataFrame: DataFrame, table: Tables.Table): DataFrame = {
     table.getClass.getDeclaredFields.foldLeft[DataFrame](dataFrame)((dataFrameWithRenamedColumn, field) => {
       field.setAccessible(true)
@@ -44,19 +53,14 @@ object DBUtils {
     })
   }
 
-  def getTableDataByPrimaryKey(table: Tables.Table, value: Int, selectCol: String, selectCols: String*): Row = {
-    val df = getTableDfByPrimaryKey(table, value)
-    if (df.isEmpty) null else df.select(selectCol, selectCols: _*).first
-  }
-
-  def getIdByToken(token: String): Int = {
+  def getIdByToken(token: String): Option[Int] = {
     val df = getTable(Tables.Sessions, rename = false).filter(s"${Tables.Sessions.token} = '$token'")
-    if (df.isEmpty) -1 else df.select(Tables.Sessions.userId).first.getInt(0)
+    if (df.isEmpty) None else Option(df.select(Tables.Sessions.userId).first.getInt(0))
   }
 
-  def getSessionId(userId: Int): Int = {
+  def getSessionId(userId: Int): Option[Int] = {
     val df = getTable(Tables.Sessions, rename = false).filter(s"${Tables.Sessions.userId} = $userId")
-    if (df.isEmpty) -1 else df.select(Tables.Sessions.id).first.getInt(0)
+    if (df.isEmpty) None else Option(df.select(Tables.Sessions.id).first.getInt(0))
   }
 
   def getTableDataAsString(table: Tables.Table, params: Map[String, String],

@@ -12,11 +12,11 @@ object Sessions {
 
   def addSession(userId: Int, token: String): Unit = {
     val id = DBUtils.getSessionId(userId)
-    if (-1 == id) {
+    if (id.isEmpty) {
       DBUtils.addDataToTable(sessionsConstants.tableName,
         Seq((userId, token)).toDF(sessionsConstants.userId, sessionsConstants.token))
     } else {
-      DBUtils.updateDataInTableByPrimaryKey(id, Map(sessionsConstants.token -> token), sessionsConstants.tableName)
+      DBUtils.updateDataInTableByPrimaryKey(id.get, Map(sessionsConstants.token -> token), sessionsConstants.tableName)
     }
   }
 

@@ -48,7 +48,7 @@ object Transactions {
 
   def addPlayerTransaction(df: DataFrame, rename: Boolean = true): Unit = {
     val id = DBUtils.getTable(playersTransactionsConstants, rename = false).count + 1
-    val addDf = if (rename) DBUtils.renameColumnsToDBFormat(df, teamsTransactionsConstants) else df
+    val addDf = if (rename) DBUtils.renameColumnsToDBFormat(df, playersTransactionsConstants) else df
     DBUtils.addDataToTable(playersTransactionsConstants.tableName,
       addDf.withColumn(playersTransactionsConstants.id, functions.lit(id)))
   }
@@ -57,15 +57,23 @@ object Transactions {
     DBUtils.deleteDataFromTable(teamsTransactionsConstants.tableName, id)
   }
 
+  def deleteTeamTransactionByTeamId(teamId: Int): Unit = {
+    DBUtils.deleteDataFromTable(teamsTransactionsConstants.tableName, teamsTransactionsConstants.teamId, teamId)
+  }
+
   def deletePlayerTransaction(id: Int): Unit = {
     DBUtils.deleteDataFromTable(playersTransactionsConstants.tableName, id)
   }
 
-  def getTeamTransaction(id: Int): Row = {
+  def deletePlayerTransactionByPlayerId(playerId: Int): Unit = {
+    DBUtils.deleteDataFromTable(playersTransactionsConstants.tableName, playersTransactionsConstants.playerId, playerId)
+  }
+
+  def getTeamTransaction(id: Int): Option[Row] = {
     DBUtils.getTableDataByPrimaryKey(teamsTransactionsConstants, id)
   }
 
-  def getPlayerTransaction(id: Int): Row = {
+  def getPlayerTransaction(id: Int): Option[Row] = {
     DBUtils.getTableDataByPrimaryKey(playersTransactionsConstants, id)
   }
 

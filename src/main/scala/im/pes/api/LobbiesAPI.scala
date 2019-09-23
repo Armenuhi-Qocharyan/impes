@@ -29,7 +29,9 @@ object LobbiesAPI {
     } ~
       path(Paths.lobbies / IntNumber) { id =>
         get {
-          complete(getLobby(id))
+          rejectEmptyResponse {
+            complete(getLobby(id))
+          }
         } ~
           post {
             headerValueByName(CommonConstants.token) { token =>
@@ -69,44 +71,57 @@ object LobbiesAPI {
   }
 
   def getLobby(id: Int): ToResponseMarshallable = {
-    val lobby = Lobbies.getLobby(id)
-    if (null == lobby) {
-      StatusCodes.NotFound
-    } else {
-      lobby
-    }
+    Lobbies.getLobby(id)
   }
 
   def addLobby(lobby: String, token: String): ToResponseMarshallable = {
     val userId = DBUtils.getIdByToken(token)
-    val lobbyDf = DBUtils.dataToDf(addLobbySchema, lobby)
-    val lobbyData = lobbyDf.first
-    if (lobbyData.anyNull) {
-      StatusCodes.BadRequest
-    } else if (lobbyData.getAs[Int](nameOf(lobbiesConstants.owner)) == userId) {
-      val lobbyId = Lobbies.addLobby(lobbyDf)
-      Lobbies.addLobbyTeam(lobbyId, Teams.getUserTeamId(userId))
-      StatusCodes.OK
+    if (userId.isEmpty) {
+      StatusCodes.Unauthorized
     } else {
-      StatusCodes.Forbidden
+      val teamId = Teams.getUserTeamId(userId.get)
+      if (teamId.isEmpty) {
+        StatusCodes.BadRequest
+      } else {
+        val lobbyDf = DBUtils.dataToDf(addLobbySchema, lobby)
+        val lobbyData = lobbyDf.first
+        if (lobbyData.anyNull) {
+          StatusCodes.BadRequest
+        } else if (lobbyData.getAs[Int](nameOf(lobbiesConstants.owner)) == userId.get) {
+          val lobbyId = Lobbies.addLobby(lobbyDf)
+          Lobbies.addLobbyTeam(lobbyId, teamId.get)
+          StatusCodes.OK
+        } else {
+          StatusCodes.Forbidden
+        }
+      }
     }
   }
 
   def joinToLobby(id: Int, token: String): ToResponseMarshallable = {
     val userId = DBUtils.getIdByToken(token)
-    if (Lobbies.isLobbyFull(id)) {
+    if (userId.isEmpty) {
+      StatusCodes.Unauthorized
+    } else if (Lobbies.isLobbyFull(id)) {
       StatusCodes.BadRequest
     } else {
-      Lobbies.addLobbyTeam(id, Teams.getUserTeamId(userId))
-      StatusCodes.OK
+      val teamId = Teams.getUserTeamId(userId.get)
+      if (teamId.isEmpty) {
+        StatusCodes.BadRequest
+      } else {
+        Lobbies.addLobbyTeam(id, teamId.get)
+        StatusCodes.OK
+      }
     }
   }
 
   def confirmLobby(id: Int, token: String): ToResponseMarshallable = {
     val userId = DBUtils.getIdByToken(token)
-    if (Lobbies.checkLobby(id, userId) && Lobbies.isLobbyFull(id)) {
+    if (userId.isEmpty) {
+      StatusCodes.Unauthorized
+    } else if (Lobbies.checkLobby(id, userId.get) && Lobbies.isLobbyFull(id)) {
       val lobbyTeamsIds = Lobbies.getLobbyTeamsIds(id)
-      val gameId = ActiveGames.addActiveGame(lobbyTeamsIds.head, lobbyTeamsIds(1), "friendly", "friendly")
+      val gameId = ActiveGames.addActiveGame(lobbyTeamsIds.head, lobbyTeamsIds(1))
       Lobbies.updateLobby(id, Map(lobbiesConstants.gameId -> gameId))
       Lobbies.deleteLobbyTeam(lobbyTeamsIds.head)
       Lobbies.deleteLobbyTeam(lobbyTeamsIds(1))
@@ -118,7 +133,9 @@ object LobbiesAPI {
 
   def rejectLobbyTeam(id: Int, teamId: Int, token: String): ToResponseMarshallable = {
     val userId = DBUtils.getIdByToken(token)
-    if (Lobbies.checkLobby(id, userId) && Lobbies.checkTeamInLobby(id, teamId) && !Lobbies.isLobbyConfirmed(id)) {
+    if (userId.isEmpty) {
+      StatusCodes.Unauthorized
+    } else if (Lobbies.checkLobby(id, userId.get) && Lobbies.checkTeamInLobby(id, teamId) && !Lobbies.isLobbyConfirmed(id)) {
       Lobbies.deleteLobbyTeam(teamId)
       StatusCodes.OK
     } else {
@@ -127,18 +144,25 @@ object LobbiesAPI {
   }
 
   def leaveLobby(id: Int, token: String): ToResponseMarshallable = {
-    val teamId = Teams.getUserTeamId(DBUtils.getIdByToken(token))
-    if (Lobbies.checkTeamInLobby(id, teamId) && !Lobbies.isLobbyConfirmed(id)) {
-      Lobbies.deleteLobbyTeam(teamId)
-      StatusCodes.OK
+    val userId = DBUtils.getIdByToken(token)
+    if (userId.isEmpty) {
+      StatusCodes.Unauthorized
     } else {
-      StatusCodes.BadRequest
+      val teamId = Teams.getUserTeamId(userId.get)
+      if (teamId.isDefined && Lobbies.checkTeamInLobby(id, teamId.get) && !Lobbies.isLobbyConfirmed(id)) {
+        Lobbies.deleteLobbyTeam(teamId.get)
+        StatusCodes.OK
+      } else {
+        StatusCodes.BadRequest
+      }
     }
   }
 
   def deleteLobby(id: Int, token: String): ToResponseMarshallable = {
     val userId = DBUtils.getIdByToken(token)
-    if (Lobbies.checkLobby(id, userId)) {
+    if (userId.isEmpty) {
+      StatusCodes.Unauthorized
+    } else if (Lobbies.checkLobby(id, userId.get)) {
       Lobbies.deleteLobby(id)
       StatusCodes.OK
     } else {

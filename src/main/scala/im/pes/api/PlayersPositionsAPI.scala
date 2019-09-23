@@ -4,68 +4,58 @@ import akka.http.scaladsl.marshalling.ToResponseMarshallable
 import akka.http.scaladsl.model.StatusCodes
 import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.server.Route
-import akka.pattern.ask
 import im.pes.constants.{CommonConstants, Paths}
-import im.pes.db.ComingGames._
-import im.pes.main.{comingGamesActor, timeout}
+import im.pes.db.PlayersPositions
+import im.pes.db.PlayersPositions.{addPlayerPositionSchema, updatePlayerPositionSchema}
 import im.pes.utils.DBUtils
 
-object ComingGamesAPI {
+object PlayersPositionsAPI {
 
   def getRoute: Route =
-    path(Paths.comingGames) {
+    path(Paths.playersPositions) {
       get {
         parameterMap { params =>
-          complete(getComingGames(params))
+          complete(getPlayersPositions(params))
         }
       } ~
         post {
-          entity(as[String]) { comingGame =>
+          entity(as[String]) { playerPosition =>
             headerValueByName(CommonConstants.token) { token =>
-              complete(addComingGame(comingGame, token))
+              complete(addPlayerPosition(playerPosition, token))
             }
           }
         }
     } ~
-      path(Paths.comingGames / IntNumber) { id =>
-        get {
-          rejectEmptyResponse {
-            complete(getComingGame(id))
-          }
-        } ~
+      path(Paths.playersPositions / IntNumber) { id =>
           put {
             headerValueByName(CommonConstants.token) { token =>
-              entity(as[String]) { comingGame =>
-                complete(updateComingGame(id, comingGame, token))
+              entity(as[String]) { playerPosition =>
+                complete(updatePlayerPosition(id, playerPosition, token))
               }
             }
           } ~
           delete {
             headerValueByName(CommonConstants.token) { token =>
-              complete(deleteComingGame(id, token))
+              complete(deletePlayerPosition(id, token))
             }
           }
       }
 
-  def getComingGames(params: Map[String, String]): ToResponseMarshallable = {
-    (comingGamesActor ? GetComingGames(params)).mapTo[String]
+  def getPlayersPositions(params: Map[String, String]): ToResponseMarshallable = {
+    PlayersPositions.getPlayersPositions(params)
   }
 
-  def getComingGame(id: Int): ToResponseMarshallable = {
-    (comingGamesActor ? GetComingGame(id)).mapTo[Option[String]]
-  }
-
-  def addComingGame(comingGame: String, token: String): ToResponseMarshallable = {
+  def addPlayerPosition(playerPosition: String, token: String): ToResponseMarshallable = {
     val userId = DBUtils.getIdByToken(token)
     if (userId.isEmpty) {
       StatusCodes.Unauthorized
     } else if (DBUtils.isAdmin(userId.get)) {
       //TODO check fields values
-      val comingGameDf = DBUtils.dataToDf(addComingGameSchema, comingGame)
-      if (comingGameDf.first.anyNull) {
+      val playerPositionDf = DBUtils.dataToDf(addPlayerPositionSchema, playerPosition)
+      if (playerPositionDf.first.anyNull) {
         StatusCodes.BadRequest
       } else {
-        comingGamesActor ! AddComingGame(comingGameDf)
+        PlayersPositions.addPlayerPosition(playerPositionDf)
         StatusCodes.OK
       }
     } else {
@@ -73,26 +63,26 @@ object ComingGamesAPI {
     }
   }
 
-  def updateComingGame(id: Int, updateComingGame: String, token: String): ToResponseMarshallable = {
+  def updatePlayerPosition(id: Int, updatePlayerPosition: String, token: String): ToResponseMarshallable = {
     val userId = DBUtils.getIdByToken(token)
     if (userId.isEmpty) {
       StatusCodes.Unauthorized
     } else if (DBUtils.isAdmin(userId.get)) {
       //TODO check fields values
-      val updateComingGameDf = DBUtils.dataToDf(updateComingGameSchema, updateComingGame)
-      comingGamesActor ! UpdateComingGame(id, updateComingGameDf)
+      val updatePlayerPositionDf = DBUtils.dataToDf(updatePlayerPositionSchema, updatePlayerPosition)
+      PlayersPositions.updatePlayerPosition(id, updatePlayerPositionDf)
       StatusCodes.OK
     } else {
       StatusCodes.Forbidden
     }
   }
 
-  def deleteComingGame(id: Int, token: String): ToResponseMarshallable = {
+  def deletePlayerPosition(id: Int, token: String): ToResponseMarshallable = {
     val userId = DBUtils.getIdByToken(token)
     if (userId.isEmpty) {
       StatusCodes.Unauthorized
     } else if (DBUtils.isAdmin(userId.get)) {
-      comingGamesActor ! DeleteComingGame(id)
+      PlayersPositions.deletePlayerPosition(id)
       StatusCodes.OK
     } else {
       StatusCodes.Forbidden

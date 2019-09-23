@@ -22,7 +22,9 @@ object ActiveGamesAPI {
       } ~
         post {
           entity(as[String]) { game =>
-            complete(addGame(game))
+            rejectEmptyResponse {
+              complete(addGame(game))
+            }
           }
         }
     } ~
@@ -40,12 +42,7 @@ object ActiveGamesAPI {
   }
 
   def getGame(id: Int): ToResponseMarshallable = {
-    val game = ActiveGames.getActiveGame(id)
-    if (null == game) {
-      StatusCodes.NotFound
-    } else {
-      game
-    }
+    ActiveGames.getActiveGame(id)
   }
 
   def addGame(addGame: String): ToResponseMarshallable = {
@@ -75,7 +72,7 @@ object ActiveGamesAPI {
       val doneGameId = DoneGames.addDoneGame(teamsIds.head, teamsIds(1), activeGameDf)
       for (gamePlayer <- ActiveGames.getGamePlayers(id)) {
         val playerId = gamePlayer.getAs[Int](Tables.ActiveGamesPlayersData.playerId)
-        val teamId = Players.getPlayerTeamId(playerId)
+        val teamId = Players.getPlayerTeamId(playerId).get
         val summaryDf = DBUtils.dataToDf(summarySchema, gamePlayer.getAs[String](Tables.ActiveGamesPlayersData.summary))
         Statistics.addPlayerStatistics(playerId, teamId, doneGameId, summaryDf)
         val summaryData = summaryDf.first

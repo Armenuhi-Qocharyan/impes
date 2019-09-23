@@ -16,7 +16,8 @@ object ActiveGames {
   val activeGamesPlayersDataConstants: Tables.ActiveGamesPlayersData.type = Tables.ActiveGamesPlayersData
   val activeGamesReservePlayersConstants: Tables.ActiveGamesReservePlayers.type = Tables.ActiveGamesReservePlayers
   val summaryConstants: Tables.Summary.type = Tables.Summary
-  val playerState = "playerState"
+  val playerPosition = "playerPosition"
+  val playerPosition = "playerPosition"
   val firstTeamId = "firstTeamId"
   val secondTeamId = "secondTeamId"
 
@@ -40,13 +41,11 @@ object ActiveGames {
 
   val addTeamPlayersSchema: StructType = StructType(
     Array(StructField(nameOf(activeGamesPlayersDataConstants.playerId), DataTypes.IntegerType),
-      StructField(playerState, DataTypes.StringType)))
+      StructField(playerPosition, DataTypes.StringType)))
 
   val addActiveGameSchema: StructType = (new StructType)
     .add(firstTeamId, DataTypes.IntegerType)
     .add(secondTeamId, DataTypes.IntegerType)
-    .add(nameOf(activeGamesConstants.championship), DataTypes.StringType)
-    .add(nameOf(activeGamesConstants.championshipState), DataTypes.StringType)
 
   val summarySchema: StructType = (new StructType)
     .add(summaryConstants.goals, DataTypes.IntegerType, nullable = false)
@@ -72,14 +71,20 @@ object ActiveGames {
     DBUtils.getTableDataAsString(activeGamesConstants, params)
   }
 
-  def getActiveGame(id: Int): String = {
+  def getActiveGame(id: Int): Option[String] = {
     DBUtils.getTableDataAsStringByPrimaryKey(activeGamesConstants, id)
   }
 
-  def getActiveGamePlayersData(gmeId: Int): String = {
+  def getActiveGamePlayersData(gameId: Int): String = {
     DBUtils.getTableDataAsString(activeGamesPlayersDataConstants,
-      Map(activeGamesPlayersDataConstants.gameId -> gmeId.toString),
+      Map(activeGamesPlayersDataConstants.gameId -> gameId.toString),
       Seq(activeGamesPlayersDataConstants.id, activeGamesPlayersDataConstants.gameId))
+  }
+
+  def getActiveGameTeamsData(gameId: Int): String = {
+    DBUtils.getTableDataAsString(activeGamesTeamsDataConstants,
+      Map(activeGamesTeamsDataConstants.gameId -> gameId.toString),
+      Seq(activeGamesTeamsDataConstants.id, activeGamesTeamsDataConstants.gameId))
   }
 
   def getActiveGamePlayersActivities(gameId: Int, activityId: Int): String = {
@@ -89,22 +94,22 @@ object ActiveGames {
     DBUtils.dataToJsonFormat(DBUtils.renameColumns(df.drop(activitiesConstants.gameId), activitiesConstants))
   }
 
-  def addActiveGame(df: DataFrame, rename: Boolean = true): Int = {
-    val id = DBUtils.getTable(activeGamesConstants, rename = false).count + 1
-    val addDf = if (rename) DBUtils.renameColumnsToDBFormat(df, activeGamesConstants) else df
-    DBUtils.addDataToTable(activeGamesConstants.tableName,
-      addDf.drop(firstTeamId, secondTeamId).withColumn(activeGamesConstants.id, functions.lit(id))
-        .withColumn(activeGamesConstants.startTimestamp, functions.lit(0)))
+  def addActiveGame(df: DataFrame): Int = {
     val data = df.first()
-    addActiveGameTeamData(id.toInt, data.getAs[Int](firstTeamId))
-    addActiveGameTeamData(id.toInt, data.getAs[Int](secondTeamId))
-    id.toInt
+    addActiveGame(data.getAs[Int](firstTeamId), data.getAs[Int](secondTeamId))
   }
 
-  def addActiveGame(firstTeamId: Int, secondTeamId: Int, championship: String, championshipState: String): Int = {
-    addActiveGame(Seq((firstTeamId, secondTeamId, championship, championshipState))
-      .toDF(this.firstTeamId, this.secondTeamId, activeGamesConstants.championship,
-        activeGamesConstants.championshipState), rename = false)
+  def addActiveGame(firstTeamId: Int, secondTeamId: Int): Int = {
+    val id = DBUtils.getTable(activeGamesConstants, rename = false).count + 1
+    Seq((id, 0, "friendly", "friendly"))
+      .toDF(activeGamesConstants.id, activeGamesConstants.startTimestamp, activeGamesConstants.championship,
+        activeGamesConstants.championshipState)
+    DBUtils.addDataToTable(activeGamesConstants.tableName, Seq((id, 0, "friendly", "friendly"))
+      .toDF(activeGamesConstants.id, activeGamesConstants.startTimestamp, activeGamesConstants.championship,
+        activeGamesConstants.championshipState))
+    addActiveGameTeamData(id.toInt, firstTeamId)
+    addActiveGameTeamData(id.toInt, secondTeamId)
+    id.toInt
   }
 
   def addActiveGameTeamData(gameId: Int, teamId: Int): Unit = {
@@ -196,7 +201,7 @@ object ActiveGames {
       Map(activeGamesPlayersDataConstants.active -> false), activeGamesPlayersDataConstants.tableName)
   }
 
-  def getGameData(id: Int): Row = {
+  def getGameData(id: Int): Option[Row] = {
     DBUtils.getTableDataByPrimaryKey(activeGamesConstants, id)
   }
 
@@ -209,15 +214,22 @@ object ActiveGames {
       .filter(s"${activeGamesPlayersDataConstants.gameId} = $gameId"), activeGamesPlayersDataConstants).collect()
   }
 
-  def playerDataExists(playerId: Int): Boolean = {
-    !DBUtils.getTable(activeGamesPlayersDataConstants, rename = false)
-      .filter(s"${activeGamesPlayersDataConstants.playerId} = $playerId").isEmpty
-  }
-
   def isPlayerActive(playerId: Int): Boolean = {
     !DBUtils.getTable(activeGamesPlayersDataConstants, rename = false)
       .filter(s"${activeGamesPlayersDataConstants.playerId} = $playerId")
       .filter(s"${activeGamesPlayersDataConstants.active} = true").isEmpty
+  }
+
+  def isPlayerInGame(playerId: Int): Boolean = {
+    !DBUtils.getTable(activeGamesPlayersDataConstants, rename = false)
+      .filter(s"${activeGamesPlayersDataConstants.playerId} = $playerId").isEmpty  ||
+      !DBUtils.getTable(activeGamesReservePlayersConstants, rename = false)
+      .filter(s"${activeGamesReservePlayersConstants.playerId} = $playerId").isEmpty
+  }
+
+  def isTeamInGame(teamId: Int): Boolean = {
+    !DBUtils.getTable(activeGamesTeamsDataConstants, rename = false)
+      .filter(s"${activeGamesTeamsDataConstants.teamId} = $teamId").isEmpty
   }
 
   def checkReservePlayer(playerId: Int): Boolean = {
@@ -237,10 +249,10 @@ object ActiveGames {
       .filter(s"${activeGamesTeamsDataConstants.isReady} = false").isEmpty
   }
 
-  def activeGameTeamsReady(gameId: Int): Boolean = {
+  def getActiveGameReadyTeamsCount(gameId: Int): Int = {
     DBUtils.getTable(activeGamesTeamsDataConstants, rename = false)
       .filter(s"${activeGamesTeamsDataConstants.gameId} = $gameId")
-      .filter(s"${activeGamesTeamsDataConstants.isReady} = true").count == 2
+      .filter(s"${activeGamesTeamsDataConstants.isReady} = true").count.toInt
   }
 
 }

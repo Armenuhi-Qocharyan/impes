@@ -1,10 +1,11 @@
 package im.pes.db
 
 import com.github.dwickern.macros.NameOf.nameOf
-import im.pes.constants.{Tables, UserRoles}
+import im.pes.constants.{CommonConstants, Tables, UserRoles}
 import im.pes.utils.DBUtils
 import org.apache.spark.sql.types.{DataTypes, StructType}
 import org.apache.spark.sql.{DataFrame, Row, functions}
+import org.mindrot.jbcrypt.BCrypt
 
 object Users {
 
@@ -15,7 +16,6 @@ object Users {
     .add(nameOf(usersConstants.password), DataTypes.StringType)
     .add(nameOf(usersConstants.age), DataTypes.IntegerType)
     .add(nameOf(usersConstants.name), DataTypes.StringType)
-    .add(nameOf(usersConstants.budget), DataTypes.IntegerType)
   val loginSchema: StructType = (new StructType)
     .add(nameOf(usersConstants.email), DataTypes.StringType)
     .add(nameOf(usersConstants.password), DataTypes.StringType)
@@ -32,14 +32,17 @@ object Users {
     DBUtils.getTableDataAsString(usersConstants, params, Seq(usersConstants.password))
   }
 
-  def getUser(id: Int): String = {
+  def getUser(id: Int): Option[String] = {
     DBUtils.getTableDataAsStringByPrimaryKey(usersConstants, id, Seq(usersConstants.password))
   }
 
   def addUser(df: DataFrame): Unit = {
+    val encrypt = functions.udf( (x: String) => BCrypt.hashpw(x, BCrypt.gensalt) )
     val id = DBUtils.getTable(usersConstants, rename = false).count + 1
     DBUtils.addDataToTable(usersConstants.tableName,
       DBUtils.renameColumnsToDBFormat(df, usersConstants).withColumn(usersConstants.id, functions.lit(id))
+        .withColumn(usersConstants.password, encrypt(functions.col(usersConstants.password)))
+        .withColumn(usersConstants.budget, functions.lit(14 * CommonConstants.playerMinCost))
         .withColumn(usersConstants.role, functions.lit(userRoles.user)))
   }
 
@@ -56,7 +59,7 @@ object Users {
     DBUtils.deleteDataFromTable(usersConstants.tableName, id)
   }
 
-  def getUserData(id: Int): Row = {
+  def getUserData(id: Int): Option[Row] = {
     DBUtils.getTableDataByPrimaryKey(usersConstants, id)
   }
 

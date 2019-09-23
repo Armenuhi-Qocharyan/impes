@@ -26,7 +26,9 @@ object UsersAPI {
     } ~
       path(Paths.users / IntNumber) { id =>
         get {
-          complete(getUser(id))
+          rejectEmptyResponse {
+            complete(getUser(id))
+          }
         } ~
           put {
             headerValueByName(CommonConstants.token) { token =>
@@ -47,12 +49,7 @@ object UsersAPI {
   }
 
   def getUser(id: Int): ToResponseMarshallable = {
-    val user = Users.getUser(id)
-    if (null == user) {
-      StatusCodes.NotFound
-    } else {
-      user
-    }
+    Users.getUser(id)
   }
 
   def addUser(user: String): ToResponseMarshallable = {
@@ -68,12 +65,14 @@ object UsersAPI {
 
   def updateUser(id: Int, updateUser: String, token: String): ToResponseMarshallable = {
     val userId = DBUtils.getIdByToken(token)
-    if (DBUtils.isAdmin(userId)) {
+    if (userId.isEmpty) {
+      StatusCodes.Unauthorized
+    } else if (DBUtils.isAdmin(userId.get)) {
       val updateUserDf = DBUtils.dataToDf(updateUserWithRoleSchema, updateUser)
       //TODO check fields values
       Users.updateUser(id, updateUserDf)
       StatusCodes.NoContent
-    } else if (userId == id) {
+    } else if (userId.get == id) {
       val updateUserDf = DBUtils.dataToDf(updateUserSchema, updateUser)
       //TODO check what user may update
       //TODO check fields values
@@ -86,7 +85,9 @@ object UsersAPI {
 
   def deleteUser(id: Int, token: String): ToResponseMarshallable = {
     val userId = DBUtils.getIdByToken(token)
-    if (DBUtils.isAdmin(userId) || userId == id) {
+    if (userId.isEmpty) {
+      StatusCodes.Unauthorized
+    } else if (DBUtils.isAdmin(userId.get) || userId.get == id) {
       Users.deleteUser(id)
       StatusCodes.NoContent
     } else {

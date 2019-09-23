@@ -8,8 +8,8 @@ import akka.http.scaladsl.server.Directives._
 import akka.http.scaladsl.server.Route
 import com.github.dwickern.macros.NameOf.nameOf
 import im.pes.constants.{CommonConstants, Paths, Tables}
-import im.pes.db.{Players, Teams, Transactions, TransactionsHistory, Users}
 import im.pes.db.Transactions.{addPlayerTransactionSchema, addTeamTransactionSchema, playersTransactionsConstants, teamsTransactionsConstants}
+import im.pes.db._
 import im.pes.utils.DBUtils
 
 object TransactionsAPI {
@@ -73,6 +73,7 @@ object TransactionsAPI {
   }
 
   def addTeamTransaction(teamTransaction: String, token: String): ToResponseMarshallable = {
+    val userId = DBUtils.getIdByToken(token).getOrElse(return StatusCodes.Unauthorized)
     val teamTransactionDf = DBUtils.dataToDf(addTeamTransactionSchema, teamTransaction)
     val teamTransactionData = teamTransactionDf.first
     if (teamTransactionData.anyNull) {
@@ -82,10 +83,16 @@ object TransactionsAPI {
     if (Transactions.checkTeamTransaction(teamId)) {
       return StatusCodes.BadRequest
     }
-    val userId = DBUtils.getIdByToken(token)
     val team = Teams.getTeamData(teamId)
-    if (null != team && team.getAs[Int](Tables.Teams.owner) == userId) {
-      val teamBudget = team.getAs[Int](Tables.Teams.budget)
+    if (team.isDefined && team.get.getAs[Int](Tables.Teams.owner) == userId) {
+      val teamPLayers = Players.getTeamPlayers(teamId)
+      val playersCost = teamPLayers.foldLeft[Int](0)((playersCost, teamPlayer) => {
+        if (Transactions.checkPlayerTransaction(teamPlayer.getInt(0))) {
+          return StatusCodes.BadRequest
+        }
+        playersCost + teamPlayer.getInt(1)
+      })
+      val teamBudget = team.get.getAs[Int](Tables.Teams.budget) + playersCost
       val priceDiff: Float =
         (teamTransactionData.getAs[Int](nameOf(teamsTransactionsConstants.price)) - teamBudget).toFloat / teamBudget
       if (priceDiff > 0.1 || priceDiff < -0.1) {
@@ -100,39 +107,50 @@ object TransactionsAPI {
   }
 
   def buyTeam(teamTransactionId: Int, token: String): ToResponseMarshallable = {
-    val userId = DBUtils.getIdByToken(token)
-    val user = Users.getUserData(userId)
-    if (null == user) {
-      return StatusCodes.Forbidden
+    val userId = DBUtils.getIdByToken(token).getOrElse(return StatusCodes.Unauthorized)
+    val user = Users.getUserData(userId).getOrElse(return StatusCodes.Forbidden)
+    if (Teams.getUserTeamId(userId).isDefined) {
+      return StatusCodes.BadRequest
     }
-    val teamTransaction = Transactions.getTeamTransaction(teamTransactionId)
+    val teamTransaction = Transactions.getTeamTransaction(teamTransactionId).getOrElse(return StatusCodes.NotFound)
+    val teamId = teamTransaction.getAs[Int](Tables.TeamsTransactions.teamId)
+    if (ActiveGames.isTeamInGame(teamId) || Lobbies.isTeamInLobby(teamId)) {
+      return StatusCodes.Conflict
+    }
     val userBudget = user.getAs[Int](Tables.Users.budget)
     val teamPrice = teamTransaction.getAs[Int](Tables.TeamsTransactions.price)
     if (userBudget < teamPrice) {
       StatusCodes.BadRequest
     } else {
-      val teamId = teamTransaction.getAs[Int](Tables.TeamsTransactions.teamId)
-      val sellerId = Teams.getTeamData(teamId).getAs[Int](Tables.Teams.owner)
-      val seller = Users.getUserData(sellerId)
-      Users.updateUser(sellerId, Map(Tables.Users.budget -> (seller.getAs[Int](Tables.Users.budget) + teamPrice)))
-      Users.updateUser(userId, Map(Tables.Users.budget -> (userBudget - teamPrice)))
-      Teams.updateTeam(teamId, Map(Tables.Teams.owner -> userId))
-      TransactionsHistory.addTeamTransactionHistory(teamId, sellerId, userId, teamPrice, LocalDate.now().toString)
-      Transactions.deleteTeamTransaction(teamTransactionId)
-      StatusCodes.NoContent
+      val sellerId = Teams.getTeamData(teamId).get.getAs[Int](Tables.Teams.owner)
+      if (sellerId == userId) {
+        StatusCodes.Conflict
+      } else {
+        val seller = Users.getUserData(sellerId).get
+        Users.updateUser(sellerId, Map(Tables.Users.budget -> (seller.getAs[Int](Tables.Users.budget) + teamPrice)))
+        Users.updateUser(userId, Map(Tables.Users.budget -> (userBudget - teamPrice)))
+        Teams.updateTeam(teamId, Map(Tables.Teams.owner -> userId))
+        TransactionsHistory.addTeamTransactionHistory(teamId, sellerId, userId, teamPrice, LocalDate.now().toString)
+        Transactions.deleteTeamTransaction(teamTransactionId)
+        StatusCodes.NoContent
+      }
     }
   }
 
   def deleteTeamTransaction(id: Int, token: String): ToResponseMarshallable = {
     val userId = DBUtils.getIdByToken(token)
-    val teamTransaction = Transactions.getTeamTransaction(id)
-    if (null == teamTransaction) {
-      StatusCodes.BadRequest
-    } else if (Teams.checkTeam(teamTransaction.getAs[Int](teamsTransactionsConstants.teamId), userId)) {
-      Transactions.deleteTeamTransaction(id)
-      StatusCodes.NoContent
+    if (userId.isEmpty) {
+      StatusCodes.Unauthorized
     } else {
-      StatusCodes.Forbidden
+      val teamTransaction = Transactions.getTeamTransaction(id)
+      if (teamTransaction.isEmpty) {
+        StatusCodes.BadRequest
+      } else if (Teams.checkTeam(teamTransaction.get.getAs[Int](teamsTransactionsConstants.teamId), userId.get)) {
+        Transactions.deleteTeamTransaction(id)
+        StatusCodes.NoContent
+      } else {
+        StatusCodes.Forbidden
+      }
     }
   }
 
@@ -141,6 +159,7 @@ object TransactionsAPI {
   }
 
   def addPlayerTransaction(playerTransaction: String, token: String): ToResponseMarshallable = {
+    val userId = DBUtils.getIdByToken(token).getOrElse(return StatusCodes.Unauthorized)
     val playerTransactionDf = DBUtils.dataToDf(addPlayerTransactionSchema, playerTransaction)
     val playerTransactionData = playerTransactionDf.first
     if (playerTransactionData.anyNull) {
@@ -150,17 +169,21 @@ object TransactionsAPI {
     if (Transactions.checkPlayerTransaction(playerId)) {
       return StatusCodes.BadRequest
     }
-    val userId = DBUtils.getIdByToken(token)
-    val player = Players.getPlayerData(playerId)
     if (Players.checkPlayer(playerId, userId)) {
-      val playerCost = player.getAs[Int](Tables.Players.cost)
-      val priceDiff: Float =
-        (playerTransactionData.getAs[Int](nameOf(teamsTransactionsConstants.price)) - playerCost).toFloat / playerCost
-      if (priceDiff > 0.1 || priceDiff < -0.1) {
+      val player = Players.getPlayerData(playerId).get
+      val teamId = player.getAs[Int](Tables.Players.teamId)
+      if (Transactions.checkTeamTransaction(teamId)) {
         StatusCodes.BadRequest
       } else {
-        Transactions.addPlayerTransaction(playerTransactionDf)
-        StatusCodes.OK
+        val playerCost = player.getAs[Int](Tables.Players.cost)
+        val priceDiff: Float =
+          (playerTransactionData.getAs[Int](nameOf(teamsTransactionsConstants.price)) - playerCost).toFloat / playerCost
+        if (priceDiff > 0.1 || priceDiff < -0.1) {
+          StatusCodes.BadRequest
+        } else {
+          Transactions.addPlayerTransaction(playerTransactionDf)
+          StatusCodes.OK
+        }
       }
     } else {
       StatusCodes.Forbidden
@@ -168,42 +191,52 @@ object TransactionsAPI {
   }
 
   def buyPlayer(playerTransactionId: Int, token: String): ToResponseMarshallable = {
-    val userId = DBUtils.getIdByToken(token)
-    val playerTransaction = Transactions.getPlayerTransaction(playerTransactionId)
-    val team = Teams.getUserTeam(userId)
-    if (null == team) {
-      return StatusCodes.BadRequest
+    val userId = DBUtils.getIdByToken(token).getOrElse(return StatusCodes.Unauthorized)
+    val playerTransaction = Transactions.getPlayerTransaction(playerTransactionId).getOrElse(return StatusCodes.BadRequest)
+    val playerId = playerTransaction.getAs[Int](Tables.PlayersTransactions.playerId)
+    if (ActiveGames.isPlayerInGame(playerId)) {
+      return StatusCodes.Conflict
     }
+    val team = Teams.getUserTeam(userId).getOrElse(return StatusCodes.BadRequest)
     val teamBudget = team.getAs[Int](Tables.Teams.budget)
     val playerPrice = playerTransaction.getAs[Int](Tables.PlayersTransactions.price)
     if (teamBudget < playerPrice) {
       StatusCodes.BadRequest
     } else {
       val playerId = playerTransaction.getAs[Int](Tables.PlayersTransactions.playerId)
-      val sellersTeamId = Players.getPlayerData(playerId).getAs[Int](Tables.Players.teamId)
-      val sellersTeam = Teams.getTeamData(sellersTeamId)
+      val sellersTeamId = Players.getPlayerData(playerId).get.getAs[Int](Tables.Players.teamId)
+      val sellersTeam = Teams.getTeamData(sellersTeamId).get
       val teamId = team.getAs[Int](Tables.Teams.id)
-      Teams.updateTeam(sellersTeamId,
-        Map(Tables.Teams.budget -> (sellersTeam.getAs[Int](Tables.Teams.budget) + playerPrice)))
-      Teams.updateTeam(teamId, Map(Tables.Teams.budget -> (teamBudget - playerPrice)))
-      Players.updatePlayer(playerId, Map(Tables.Players.teamId -> teamId))
-      TransactionsHistory
-        .addPlayerTransactionHistory(playerId, sellersTeamId, teamId, playerPrice, LocalDate.now().toString)
-      Transactions.deletePlayerTransaction(playerTransactionId)
-      StatusCodes.NoContent
+      if (teamId == sellersTeamId) {
+        StatusCodes.BadRequest
+      } else {
+        Teams.updateTeam(sellersTeamId,
+          Map(Tables.Teams.budget -> (sellersTeam.getAs[Int](Tables.Teams.budget) + playerPrice)))
+        Teams.updateTeam(teamId, Map(Tables.Teams.budget -> (teamBudget - playerPrice)))
+        Players.updatePlayer(playerId, Map(Tables.Players.teamId -> teamId))
+        TransactionsHistory
+          .addPlayerTransactionHistory(playerId, sellersTeamId, teamId, playerPrice, LocalDate.now().toString)
+        Transactions.deletePlayerTransaction(playerTransactionId)
+        StatusCodes.NoContent
+      }
     }
   }
 
   def deletePlayerTransaction(id: Int, token: String): ToResponseMarshallable = {
     val userId = DBUtils.getIdByToken(token)
-    val playerTransaction = Transactions.getPlayerTransaction(id)
-    if (null == playerTransaction) {
-      StatusCodes.BadRequest
-    } else if (Players.checkPlayer(playerTransaction.getAs[Int](playersTransactionsConstants.playerId), userId)) {
-      Transactions.deletePlayerTransaction(id)
-      StatusCodes.NoContent
+    if (userId.isEmpty) {
+      StatusCodes.Unauthorized
     } else {
-      StatusCodes.Forbidden
+      val playerTransaction = Transactions.getPlayerTransaction(id)
+      if (playerTransaction.isEmpty) {
+        StatusCodes.BadRequest
+      } else if (Players
+        .checkPlayer(playerTransaction.get.getAs[Int](playersTransactionsConstants.playerId), userId.get)) {
+        Transactions.deletePlayerTransaction(id)
+        StatusCodes.NoContent
+      } else {
+        StatusCodes.Forbidden
+      }
     }
   }
 

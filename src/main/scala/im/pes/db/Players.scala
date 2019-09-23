@@ -40,7 +40,7 @@ object Players {
     DBUtils.getTableDataAsString(playersConstants, params)
   }
 
-  def getPlayer(id: Int): String = {
+  def getPlayer(id: Int): Option[String] = {
     DBUtils.getTableDataAsStringByPrimaryKey(playersConstants, id)
   }
 
@@ -53,7 +53,7 @@ object Players {
   }
 
   def updatePlayer(playerId: Int, summaryData: Row): Unit = {
-    val player = getPlayerData(playerId)
+    val player = getPlayerData(playerId).get
     val age = player.getAs[Int](playersConstants.age)
     val gameIntelligence = calculateGameIntelligence(player.getAs[Int](playersConstants.gameIntelligence), summaryData)
     val teamPlayer = calculateTeamPlayer(player.getAs[Int](playersConstants.teamPlayer), summaryData)
@@ -78,7 +78,7 @@ object Players {
   }
 
   private def getUpdatePlayerWithSkills(playerId: Int, updateDf: DataFrame): DataFrame = {
-    val player = getPlayerData(playerId)
+    val player = getPlayerData(playerId).get
     val df = DBUtils.renameColumnsToDBFormat(updateDf, playersConstants)
     val updateData = df.first
     val gameIntelligence = Option(updateData.getAs[Int](playersConstants.gameIntelligence))
@@ -170,6 +170,7 @@ object Players {
 
   def deletePlayer(id: Int, cost: Int): Unit = {
     if (isDefaultPlayer(id)) {
+      Transactions.deletePlayerTransactionByPlayerId(id)
       Players.updatePlayer(id, Map(playersConstants.teamId -> Teams.getAdminTeamId))
       Transactions.addPlayerTransaction(id, cost)
     } else {
@@ -183,31 +184,36 @@ object Players {
 
   def deletePlayer(id: Int): Unit = {
     DBUtils.deleteDataFromTable(playersConstants.tableName, id)
+    Transactions.deletePlayerTransactionByPlayerId(id)
   }
 
   def checkPlayer(id: Int, userId: Int): Boolean = {
     val teamsConstants = Tables.Teams
     val player = getPlayerData(id)
-    if (null == player) {
+    if (player.isEmpty) {
       false
     } else {
       !DBUtils.getTable(teamsConstants, rename = false)
-        .filter(s"${teamsConstants.id} = ${player.getAs[Int](playersConstants.teamId)}")
+        .filter(s"${teamsConstants.id} = ${player.get.getAs[Int](playersConstants.teamId)}")
         .filter(s"${teamsConstants.owner} = $userId").isEmpty
     }
+  }
+
+  def checkPlayerExist(id: Int): Boolean = {
+    DBUtils.checkDataExist(playersConstants, id)
   }
 
   def isDefaultPlayer(id: Int): Boolean = {
     !DBUtils.getTableDfByPrimaryKey(playersConstants, id).filter(s"${playersConstants.isDefault} = true").isEmpty
   }
 
-  def getPlayerData(id: Int): Row = {
+  def getPlayerData(id: Int): Option[Row] = {
     DBUtils.getTableDataByPrimaryKey(playersConstants, id)
   }
 
-  def getPlayerTeamId(id: Int): Int = {
+  def getPlayerTeamId(id: Int): Option[Int] = {
     val playerData = DBUtils.getTableDataByPrimaryKey(playersConstants, id, playersConstants.teamId)
-    if (null == playerData) -1 else playerData.getInt(0)
+    if (playerData.isEmpty) None else Option(playerData.get.getInt(0))
   }
 
   def getTeamPlayers(teamId: Int): Array[Row] = {

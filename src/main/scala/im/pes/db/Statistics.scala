@@ -14,7 +14,7 @@ object Statistics {
     DBUtils.getTableDataAsString(teamsStatisticsConstants, params)
   }
 
-  def getTeamStatistics(id: Int): String = {
+  def getTeamStatistics(id: Int): Option[String] = {
     DBUtils.getTableDataAsStringByPrimaryKey(teamsStatisticsConstants, id)
   }
 
@@ -22,7 +22,7 @@ object Statistics {
     DBUtils.getTableDataAsString(playersStatisticsConstants, params)
   }
 
-  def getPlayerStatistics(id: Int): String = {
+  def getPlayerStatistics(id: Int): Option[String] = {
     DBUtils.getTableDataAsStringByPrimaryKey(playersStatisticsConstants, id)
   }
 

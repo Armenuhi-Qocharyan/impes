@@ -212,6 +212,14 @@ object Tables {
     val teamId = "teamId"
   }
 
+  case object PlayersPositions extends Table {
+    override val tableName = "players_positions"
+    val id = "id"
+    val position = "position"
+    val x = "x"
+    val y = "x"
+  }
+
   case object Summary {
     val goals = "goals"
     val donePasses = "donePasses"
